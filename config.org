@@ -1,0 +1,14 @@
+#+TITLE: readme.org
+;-*- eval: (load-file "./more-init.el"); -*-
+
+* Emacs Configuration
+
+** Overview
+
+A literate configuration for =Emacs=. Tangling this file creates an =init.el= file.
+
+Borrowed heavily from [[https://github.com/progfolio/.emacs.d][progfolio's example]]. 
+
+** early-init
+
+
