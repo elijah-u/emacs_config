@@ -64,4 +64,4 @@
 ;; themes
 (use-package modus-themes
   :init
-  (load-theme 'modus-operandi :no-confirm))
+  (load-theme 'modus-operandi-tinted :no-confirm))
