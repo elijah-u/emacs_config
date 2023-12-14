@@ -12,7 +12,7 @@
 ;  (setq no-littering-etc-directory user-local-tmp-config-dir
 ;        no-littering-var-directory user-local-tmp-data-dir))
 (defun edit-init () (interactive) (find-file (concat user-emacs-directory "init.el")))
-(setq custom-file (no-littering-expand-etc-file-name "custom.el"))
+;(setq custom-file (no-littering-expand-etc-file-name "custom.el"))
 (add-hook 'elpaca-after-init-hook (lambda () (load custom-file 'noerror)))
 ;; prefs
 (setq-default indent-tabs-mode nil
