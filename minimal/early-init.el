@@ -33,6 +33,18 @@
 (setq ring-bell-function #'ignore
       inhibit-startup-screen t)
 ;custom dirs
+(defun make-var-dir-pair (variable dir &optional path)
+  (let ((path (or path user-emacs-directory))
+        (target (expand-file-name dir path)))  
+  (unless (file-directory-p target) (make-directory target))
+  (set variable target)
+  (message target)))
+(defun make-var-dir-pairs-from-list (list)
+  (dolist (pair list) (apply 'make-var-dir-pair pair)))
+(make-var-dir-pairs-from-list
+  '((user-local-tmp-config-dir ".config") 
+    (user-local-tmp-data-dir ".data"))) 
+
 ;(defun make-var-dir-pair(list)
 ;  (dolist (pair list)
 ;    (let ((var (car pair))
@@ -42,10 +54,12 @@
 ;(make-var-dir-pair
 ; '((user-local-tmp-config-dir '(expand-file-name ".config" user-emacs-directory))
 ;   (user-local-tmp-data-dir '(expand-file-name ".data" user-emacs-directory))))
-;(when (fboundp 'startup-redirect-eln-cache)
-;  (startup-redirect-eln-cache
-;   (convert-standard-filename
-;    (expand-file-name  "eln-cache" user-local-tmp-data-dir))))
+
+(when (fboundp 'startup-redirect-eln-cache)
+  (startup-redirect-eln-cache
+   (convert-standard-filename
+    (expand-file-name "eln-cache" user-local-tmp-data-dir))))
+
 ;fonts
 (push '(font . "Source Code Pro") default-frame-alist)
 (set-face-font 'default "Source Code Pro")
