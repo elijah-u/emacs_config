@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 ;; elpaca for package management
 (add-to-list 'load-path (concat user-emacs-directory "lisp"))
 (require 'elpaca-init)
@@ -7,12 +8,13 @@
 (elpaca-wait)
 ;; custom
 (use-package no-littering
-	     )
-;  :init
-;  (setq no-littering-etc-directory user-local-tmp-config-dir
-;        no-littering-var-directory user-local-tmp-data-dir))
+  :init
+  (setq no-littering-etc-directory user-local-tmp-config-dir
+        no-littering-var-directory user-local-tmp-data-dir)
+  :config
+  (no-littering-theme-backups))
 (defun edit-init () (interactive) (find-file (concat user-emacs-directory "init.el")))
-;(setq custom-file (no-littering-expand-etc-file-name "custom.el"))
+(setq custom-file (expand-file-name "custom.el" user-local-tmp-config-dir))
 (add-hook 'elpaca-after-init-hook (lambda () (load custom-file 'noerror)))
 ;; prefs
 (setq-default indent-tabs-mode nil
