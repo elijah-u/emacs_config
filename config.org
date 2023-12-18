@@ -1,5 +1,6 @@
-#+TITLE: readme.org
 ;-*- eval: (load-file "./more-init.el"); -*-
+#+TITLE: Emacs Configuration
+#+PROPERTY: header-args :mkdirp yes :tangle yes "tangle-mode: #o444 :results silent :noweb yes
 
 * Emacs Configuration
 
@@ -10,5 +11,134 @@ A literate configuration for =Emacs=. Tangling this file creates an =init.el= fi
 Borrowed heavily from [[https://github.com/progfolio/.emacs.d][progfolio's example]]. 
 
 ** early-init
+:PROPERTIES:
+:header-args: :tangle early-init.el :lexical t
+:END:
+Customization before packages and UI initialization. 
 
+*** header
+#+begin_src emacs-lisp :lexical t 
+  ;;; -*- lexical-bindings: t; -*-
+  ;;; early-init.el
+#+end_src
 
+*** turn off package
+Using [[https://github.com/progfolio/elpaca/blob/master/doc/manual.md#recipes][elpaca]] instead of package.
+Also some other pieces for possibly a faster load.
+
+#+begin_src emacs-lisp
+  (setq package-enable-at-startup nil)
+  (setq inhibit-default-init nil)
+  (setq native-comp-async-report-warnings-errors nil)
+  (defvar default-file-name-handler-alist file-name-handler-alist)
+  (setq file-name-handler-alist nil)
+#+end_src
+
+*** garbage collection settings
+More attempts at startup speed improvement
+
+Notes stolen from progfolio:
+
+=gc-cons-threshold= (800 KB) and =gc-cons-percentage= (0.1) control when the Emacs garbage collector can kick in.
+Temporarily turning these off during init should decrease startup time.
+Resetting them afterward will ensure that normal operations don't suffer from a large GC periods.
+
+The following is a table shows values from popular Emacs configurations.
+
+| Distribution | gc-cons-threshold |
+|--------------+-------------------|
+| Default      |            800000 |
+| Doom         |          16777216 |
+| Spacemacs    |         100000000 |
+
+#+begin_src emacs-lisp
+  (setq gc-cons-threshold most-positive-fixnum
+        gc-cons-percentage 1)
+  (defun +gc-after-focus-change ()
+    "Run GC when frame loses focus."
+    (run-with-idle-timer
+     5 nil
+     (lambda () (unless (frame-focus-state) (garbage-collect)))))
+  (defun +reset-init-values ()
+    (run-with-idle-timer
+     1 nil
+     (lambda ()
+       (setq file-name-handler-alist default-file-name-handler-alist
+             gc-cons-percentage 0.1
+             gc-cons-threshold 100000000)
+       (message "gc-cons-threshold & file-name-handler-alist restored")
+       (when (boundp 'after-focus-change-function)
+         (add-function :after after-focus-change-function #'+gc-after-focus-change)))))
+#+end_src
+
+*** not sure what this does
+
+#+begin_src emacs-lisp
+  (with-eval-after-load 'elpaca
+    (add-hook 'elpaca-after-init-hook '+reset-init-values))
+#+end_src
+
+*** initial window frame size and placement
+
+#+begin_src emacs-lisp
+  (setq default-frame-alist
+        '((width . 120)
+          (height . 300)
+          (left . 900)
+          (menu-bar-lines . 0)
+          (tool-bar-lines . 0) 
+          (vertical-scroll-bars . nil)))
+  (setq server-client-instructions nil)
+  (setq frame-inhibit-implied-resize t)
+  (advice-add #'x-apply-session-resources :override #'ignore)
+  (setq ring-bell-function #'ignore
+        inhibit-startup-screen t)
+#+end_src
+
+*** custom directories
+
+Creating some subdirectories and variables to make de-cluttering easier.
+
+#+begin_src emacs-lisp
+  ;custom dirs
+  (defun make-var-dir-pair (variable dir &optional path)
+    (let ((path (or path user-emacs-directory))
+          (target (expand-file-name dir path)))  
+    (unless (file-directory-p target) (make-directory target))
+    (set variable target)))
+  (defun make-var-dir-pairs-from-list (list)
+    (dolist (pair list) (apply 'make-var-dir-pair pair)))
+  (make-var-dir-pairs-from-list
+    '((user-local-tmp-config-dir ".config") 
+      (user-local-tmp-data-dir ".data"))) 
+  (when (fboundp 'startup-redirect-eln-cache)
+    (startup-redirect-eln-cache
+     (convert-standard-filename
+      (expand-file-name "eln-cache" user-local-tmp-data-dir))))
+  (setq package-user-dir (file-name-concat "elpa" user-local-tmp-config-dir))
+#+end_src
+
+*** Some default fonts
+
+#+begin_src emacs-lisp
+  ;fonts
+  (push '(font . "Source Code Pro") default-frame-alist)
+  (set-face-font 'default "Source Code Pro")
+  (set-face-font 'variable-pitch "DejaVu Sans")
+  (copy-face 'default 'fixed-pitch)
+#+end_src
+
+#+begin_src emacs-lisp
+  ;end
+  (provide 'early-init)
+  ;;; early-init.el ends here
+#+end_src
+
+** init.el
+:PROPERTIES:
+:header-args: :tangle init.el :lexical t
+:END:
+
+#+begin_src emacs-lisp
+;; -*- lexical-binding: t; -*-
+#+end_src
