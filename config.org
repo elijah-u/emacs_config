@@ -142,3 +142,138 @@ Creating some subdirectories and variables to make de-cluttering easier.
 #+begin_src emacs-lisp
 ;; -*- lexical-binding: t; -*-
 #+end_src
+*** elpaca
+Using [[https://github.com/progfolio/elpaca/blob/master/doc/manual.md#recipes][elpaca]] as the package manager requires a bit of boilerplate.
+
+We can write that to a separate =elpaca-init.el= file, though and then load that with a =require= function.
+
+**** elpaca boilerplate in =elpaca-init.el=
+
+Why does most of this not come inside the elpaca package, instead of as boilerplate to go into an =init.el=?
+
+#+begin_src emacs-lisp :mkdirp yes :tangle lisp/elpaca-init.el
+;; elpaca init
+(defvar elpaca-installer-version 0.6)
+(defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
+(defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
+(defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
+(defvar elpaca-order '(elpaca :repo "https://github.com/progfolio/elpaca.git"
+                              :ref nil
+                              :files (:defaults "elpaca-test.el" (:exclude "extensions"))
+                              :build (:not elpaca--activate-package)))
+(let* ((repo  (expand-file-name "elpaca/" elpaca-repos-directory))
+       (build (expand-file-name "elpaca/" elpaca-builds-directory))
+       (order (cdr elpaca-order))
+       (default-directory repo))
+  (add-to-list 'load-path (if (file-exists-p build) build repo))
+  (unless (file-exists-p repo)
+    (make-directory repo t)
+    (when (< emacs-major-version 28) (require 'subr-x))
+    (condition-case-unless-debug err
+        (if-let ((buffer (pop-to-buffer-same-window "*elpaca-bootstrap*"))
+                 ((zerop (call-process "git" nil buffer t "clone"
+                                       (plist-get order :repo) repo)))
+                 ((zerop (call-process "git" nil buffer t "checkout"
+                                       (or (plist-get order :ref) "--"))))
+                 (emacs (concat invocation-directory invocation-name))
+                 ((zerop (call-process emacs nil buffer nil "-Q" "-L" "." "--batch"
+                                       "--eval" "(byte-recompile-directory \".\" 0 'force)")))
+                 ((require 'elpaca))
+                 ((elpaca-generate-autoloads "elpaca" repo)))
+            (progn (message "%s" (buffer-string)) (kill-buffer buffer))
+          (error "%s" (with-current-buffer buffer (buffer-string))))
+      ((error) (warn "%s" err) (delete-directory repo 'recursive))))
+  (unless (require 'elpaca-autoloads nil t)
+    (require 'elpaca)
+    (elpaca-generate-autoloads "elpaca" repo)
+    (load "./elpaca-autoloads")))
+(add-hook 'after-init-hook #'elpaca-process-queues)
+(elpaca `(,@elpaca-order))
+
+(provide 'elpaca-init)
+#+end_src
+
+**** elpaca startup in =init.el=
+
+#+begin_src emacs-lisp
+;; elpaca for package management
+(add-to-list 'load-path (concat user-emacs-directory "lisp"))
+(require 'elpaca-init)
+(elpaca elpaca-use-package
+  (elpaca-use-package-mode)
+  (setq elpaca-use-package-by-default t))
+(elpaca-wait)
+#+end_src
+
+*** No Littering
+
+#+begin_src emacs-lisp
+;; cleaner config
+(use-package no-littering
+  :init
+  (setq no-littering-etc-directory user-local-tmp-config-dir
+        no-littering-var-directory user-local-tmp-data-dir)
+  :config
+  (no-littering-theme-backups))
+(defun edit-init () (interactive) (find-file (concat user-emacs-directory "init.el")))
+(setq custom-file (expand-file-name "custom.el" user-local-tmp-config-dir))
+(add-hook 'elpaca-after-init-hook (lambda () (load custom-file 'noerror)))
+#+end_src
+
+*** The Rest
+
+Temporary dump while cleaning up
+
+#+begin_src emacs-lisp
+;; prefs
+(setq-default indent-tabs-mode nil
+              c-basic-indent 2
+              c-basic-offset 2
+              tab-width 2)
+;; evil mode
+(use-package evil 
+  :demand t 
+  :init
+  (setq evil-want-integration t
+        evil-want-keybinding nil
+        evil-want-C-i-jump nil)
+  :config (evil-mode 1))
+(use-package evil-collection 
+  :after evil
+  :custom (evil-collection-key-blacklist '("SPC"))
+  :config
+  (evil-collection-init)
+  (evil-collection-buff-menu-setup))
+;; shortcuts and hinting
+(use-package which-key
+  :config (which-key-mode))
+(use-package general
+  :demand t
+  :config 
+  (general-evil-setup t)
+  (general-define-key
+   :states 'normal
+   :keymaps 'override
+   "," (general-simulate-key "C-c"))
+  )
+(elpaca-wait)
+(use-package key-chord
+  :init
+  (key-chord-mode 1)
+  :general
+  (:keymaps 'evil-insert-state-map
+            (general-chord "jk") 'evil-normal-state
+            (general-chord "kj") 'evil-normal-state)
+  :config
+  (setq key-chord-two-keys-delay 1))
+(elpaca-wait)
+;; magit
+(use-package magit
+  :general
+  ("C-c g" 'magit-status)
+  ("C-c G" 'magit-file-dispatch))
+;; themes
+(use-package modus-themes
+  :init
+  (load-theme 'modus-operandi-tinted :no-confirm))
+#+end_src
