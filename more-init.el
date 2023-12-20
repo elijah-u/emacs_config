@@ -6,7 +6,7 @@
 (auto-tangle-mode)
 (add-hook 'auto-tangle-after-tangle-hook (lambda ()
                                            (let ((elpaca-log-functions nil))
-                                             (load-file "~/.emacs.d/init.el")
+                                             (load-file (expand-file-name "init.el" user-emacs-directory ))
                                              (elpaca-process-queues))))
 (eldoc-mode)
 (provide 'init-dev)
