@@ -255,6 +255,22 @@ Making Emacs useable
     (evil-collection-buff-menu-setup))
 #+end_src
 
+*** Org Mode
+
+#+begin_src emacs-lisp
+  (use-package org
+    :elpaca nil
+    :config
+    (setq
+     org-src-fontify-natively t
+     org-export-allow-bind-keywords t
+     org-directory "~/org"
+     org-ellipsis "⤵")
+     (org-babel-do-load-languages
+      'org-babel-load-languages '((python . t))))
+
+#+end_src
+
 *** Shortcuts and Hinting
 
 **** which-key
