@@ -1,28 +1,26 @@
 ;-*- eval: (load-file "./more-init.el"); -*-
 #+TITLE: Emacs Configuration
-#+PROPERTY: header-args :mkdirp yes :tangle yes "tangle-mode: #o444 :results silent :noweb yes
+#+PROPERTY: header-args :mkdirp yes :tangle no :tangle-mode: #o444 :results silent :noweb yes
 
-* Emacs Configuration
-
-** Overview
+* Overview
 
 A literate configuration for =Emacs=. Tangling this file creates an =init.el= file.
 
 Borrowed heavily from [[https://github.com/progfolio/.emacs.d][progfolio's example]]. 
 
-** early-init
+* early-init
 :PROPERTIES:
 :header-args: :tangle early-init.el :lexical t
 :END:
 Customization before packages and UI initialization. 
 
-*** header
+** header
 #+begin_src emacs-lisp :lexical t 
   ;;; -*- lexical-bindings: t; -*-
   ;;; early-init.el
 #+end_src
 
-*** turn off package
+** turn off package
 Using [[https://github.com/progfolio/elpaca/blob/master/doc/manual.md#recipes][elpaca]] instead of package.
 Also some other pieces for possibly a faster load.
 
@@ -34,7 +32,7 @@ Also some other pieces for possibly a faster load.
   (setq file-name-handler-alist nil)
 #+end_src
 
-*** garbage collection settings
+** garbage collection settings
 More attempts at startup speed improvement
 
 Notes stolen from progfolio:
@@ -71,14 +69,14 @@ The following is a table shows values from popular Emacs configurations.
          (add-function :after after-focus-change-function #'+gc-after-focus-change)))))
 #+end_src
 
-*** not sure what this does
+** not sure what this does
 
 #+begin_src emacs-lisp
   (with-eval-after-load 'elpaca
     (add-hook 'elpaca-after-init-hook '+reset-init-values))
 #+end_src
 
-*** initial window frame size and placement
+** initial window frame size and placement
 
 #+begin_src emacs-lisp
   (setq default-frame-alist
@@ -95,7 +93,7 @@ The following is a table shows values from popular Emacs configurations.
         inhibit-startup-screen t)
 #+end_src
 
-*** custom directories
+** custom directories
 
 Creating some subdirectories and variables to make de-cluttering easier.
 
@@ -104,13 +102,13 @@ Creating some subdirectories and variables to make de-cluttering easier.
   (defun make-var-dir-pair (variable dir &optional path)
     (let ((path (or path user-emacs-directory))
           (target (expand-file-name dir path)))  
-    (unless (file-directory-p target) (make-directory target))
-    (set variable target)))
+      (unless (file-directory-p target) (make-directory target))
+      (set variable target)))
   (defun make-var-dir-pairs-from-list (list)
     (dolist (pair list) (apply 'make-var-dir-pair pair)))
   (make-var-dir-pairs-from-list
-    '((user-local-tmp-config-dir ".config") 
-      (user-local-tmp-data-dir ".data"))) 
+   '((user-local-tmp-config-dir ".config") 
+     (user-local-tmp-data-dir ".data"))) 
   (when (fboundp 'startup-redirect-eln-cache)
     (startup-redirect-eln-cache
      (convert-standard-filename
@@ -118,13 +116,24 @@ Creating some subdirectories and variables to make de-cluttering easier.
   (setq package-user-dir (file-name-concat "elpa" user-local-tmp-config-dir))
 #+end_src
 
-*** Some default fonts
+** code for Mac
+Unsure if the =native-comp-driver-option= bit is needed. Has been working fine without.
 
 #+begin_src emacs-lisp
-  ;fonts
-  (push '(font . "Source Code Pro") default-frame-alist)
-  (set-face-font 'default "Source Code Pro")
-  (set-face-font 'variable-pitch "DejaVu Sans")
+  (when (eq system-type 'darwin)
+    (setq dired-use-ls-dired nil)
+    (add-to-list 'exec-path "~/homebrew/bin")
+  ; (customize-set-variable 'native-comp-driver-options '("-Wl,-w"))
+    )
+#+end_src
+
+** Some default fonts
+
+#+begin_src emacs-lisp
+  ; fonts
+  (push '(font . "Fira Code Retina") default-frame-alist)
+  (set-face-font 'default "Fira Code Retina 14")
+  (set-face-font 'variable-pitch "ETBookOT 14")
   (copy-face 'default 'fixed-pitch)
 #+end_src
 
@@ -134,78 +143,78 @@ Creating some subdirectories and variables to make de-cluttering easier.
   ;;; early-init.el ends here
 #+end_src
 
-** init.el
+* init.el
 :PROPERTIES:
-:header-args: :tangle init.el :lexical t
+:header-args: :tangle init.el :lexical t :noweb yes
 :END:
 
 #+begin_src emacs-lisp
-;; -*- lexical-binding: t; -*-
+  ;; -*- lexical-binding: t; -*-
 #+end_src
-*** elpaca
+** elpaca
 Using [[https://github.com/progfolio/elpaca/blob/master/doc/manual.md#recipes][elpaca]] as the package manager requires a bit of boilerplate.
 
 We can write that to a separate =elpaca-init.el= file, though and then load that with a =require= function.
 
-**** elpaca boilerplate in =elpaca-init.el=
+*** elpaca boilerplate in =elpaca-init.el=
 
 Why does most of this not come inside the elpaca package, instead of as boilerplate to go into an =init.el=?
 
 #+begin_src emacs-lisp :mkdirp yes :tangle lisp/elpaca-init.el
-;; elpaca init
-(defvar elpaca-installer-version 0.6)
-(defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
-(defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
-(defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
-(defvar elpaca-order '(elpaca :repo "https://github.com/progfolio/elpaca.git"
-                              :ref nil
-                              :files (:defaults "elpaca-test.el" (:exclude "extensions"))
-                              :build (:not elpaca--activate-package)))
-(let* ((repo  (expand-file-name "elpaca/" elpaca-repos-directory))
-       (build (expand-file-name "elpaca/" elpaca-builds-directory))
-       (order (cdr elpaca-order))
-       (default-directory repo))
-  (add-to-list 'load-path (if (file-exists-p build) build repo))
-  (unless (file-exists-p repo)
-    (make-directory repo t)
-    (when (< emacs-major-version 28) (require 'subr-x))
-    (condition-case-unless-debug err
-        (if-let ((buffer (pop-to-buffer-same-window "*elpaca-bootstrap*"))
-                 ((zerop (call-process "git" nil buffer t "clone"
-                                       (plist-get order :repo) repo)))
-                 ((zerop (call-process "git" nil buffer t "checkout"
-                                       (or (plist-get order :ref) "--"))))
-                 (emacs (concat invocation-directory invocation-name))
-                 ((zerop (call-process emacs nil buffer nil "-Q" "-L" "." "--batch"
-                                       "--eval" "(byte-recompile-directory \".\" 0 'force)")))
-                 ((require 'elpaca))
-                 ((elpaca-generate-autoloads "elpaca" repo)))
-            (progn (message "%s" (buffer-string)) (kill-buffer buffer))
-          (error "%s" (with-current-buffer buffer (buffer-string))))
-      ((error) (warn "%s" err) (delete-directory repo 'recursive))))
-  (unless (require 'elpaca-autoloads nil t)
-    (require 'elpaca)
-    (elpaca-generate-autoloads "elpaca" repo)
-    (load "./elpaca-autoloads")))
-(add-hook 'after-init-hook #'elpaca-process-queues)
-(elpaca `(,@elpaca-order))
+  ;; elpaca init
+  (defvar elpaca-installer-version 0.6)
+  (defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
+  (defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
+  (defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
+  (defvar elpaca-order '(elpaca :repo "https://github.com/progfolio/elpaca.git"
+                                :ref nil
+                                :files (:defaults "elpaca-test.el" (:exclude "extensions"))
+                                :build (:not elpaca--activate-package)))
+  (let* ((repo  (expand-file-name "elpaca/" elpaca-repos-directory))
+         (build (expand-file-name "elpaca/" elpaca-builds-directory))
+         (order (cdr elpaca-order))
+         (default-directory repo))
+    (add-to-list 'load-path (if (file-exists-p build) build repo))
+    (unless (file-exists-p repo)
+      (make-directory repo t)
+      (when (< emacs-major-version 28) (require 'subr-x))
+      (condition-case-unless-debug err
+          (if-let ((buffer (pop-to-buffer-same-window "*elpaca-bootstrap*"))
+                   ((zerop (call-process "git" nil buffer t "clone"
+                                         (plist-get order :repo) repo)))
+                   ((zerop (call-process "git" nil buffer t "checkout"
+                                         (or (plist-get order :ref) "--"))))
+                   (emacs (concat invocation-directory invocation-name))
+                   ((zerop (call-process emacs nil buffer nil "-Q" "-L" "." "--batch"
+                                         "--eval" "(byte-recompile-directory \".\" 0 'force)")))
+                   ((require 'elpaca))
+                   ((elpaca-generate-autoloads "elpaca" repo)))
+              (progn (message "%s" (buffer-string)) (kill-buffer buffer))
+            (error "%s" (with-current-buffer buffer (buffer-string))))
+        ((error) (warn "%s" err) (delete-directory repo 'recursive))))
+    (unless (require 'elpaca-autoloads nil t)
+      (require 'elpaca)
+      (elpaca-generate-autoloads "elpaca" repo)
+      (load "./elpaca-autoloads")))
+  (add-hook 'after-init-hook #'elpaca-process-queues)
+  (elpaca `(,@elpaca-order))
 
-(provide 'elpaca-init)
+  (provide 'elpaca-init)
 #+end_src
 
-**** elpaca startup in =init.el=
+*** elpaca startup in =init.el=
 
 #+begin_src emacs-lisp
-;; elpaca for package management
-(add-to-list 'load-path (concat user-emacs-directory "lisp"))
-(require 'elpaca-init)
-(elpaca elpaca-use-package
-  (elpaca-use-package-mode)
-  (setq elpaca-use-package-by-default t))
-(elpaca-wait)
+  ;; elpaca for package management
+  (add-to-list 'load-path (concat user-emacs-directory "lisp"))
+  (require 'elpaca-init)
+  (elpaca elpaca-use-package
+    (elpaca-use-package-mode)
+    (setq elpaca-use-package-by-default t))
+  (elpaca-wait)
 #+end_src
 
-*** No Littering
+** No Littering
 
 #+begin_src emacs-lisp
   ;; cleaner config
@@ -222,7 +231,7 @@ Why does most of this not come inside the elpaca package, instead of as boilerpl
   (add-hook 'elpaca-after-init-hook (lambda () (load custom-file 'noerror)))
 #+end_src
 
-*** Custom Preferences
+** Custom Preferences
 
 #+begin_src emacs-lisp
   ;; prefs
@@ -235,7 +244,7 @@ Why does most of this not come inside the elpaca package, instead of as boilerpl
   (setq recentf-max-saved-items 25)
 #+end_src
 
-*** Evil mode
+** Evil mode
 Making Emacs useable
 
 #+begin_src emacs-lisp
@@ -255,32 +264,47 @@ Making Emacs useable
     (evil-collection-buff-menu-setup))
 #+end_src
 
-*** Org Mode
+*** evil-org
+
+#+begin_src emacs-lisp
+  (use-package evil-org
+    :commands evil-org-mode
+    :after org
+    :init
+    (add-hook 'org-mode-hook 'evil-org-mode)
+    :config
+    (add-hook 'evil-org-mode-hook
+              (lambda ()
+                (evil-org-set-key-theme '(textobjects insert navigation additional todo)))))
+#+end_src
+
+
+** Org Mode
 
 #+begin_src emacs-lisp
   (use-package org
     :elpaca nil
     :config
     (setq
-     org-src-fontify-natively t
+     org-src-fontify-natively nil
      org-export-allow-bind-keywords t
      org-directory "~/org"
      org-ellipsis "⤵")
-     (org-babel-do-load-languages
-      'org-babel-load-languages '((python . t))))
+    (org-babel-do-load-languages
+     'org-babel-load-languages '((python . t))))
 
 #+end_src
 
-*** Shortcuts and Hinting
+** Shortcuts and Hinting
 
-**** which-key
+*** which-key
 #+begin_src emacs-lisp
   ;; shortcuts and hinting
   (use-package which-key
     :config (which-key-mode))
 #+end_src
 
-**** General
+*** General
 #+begin_src emacs-lisp
   (use-package general
     :demand t
@@ -294,7 +318,7 @@ Making Emacs useable
   (elpaca-wait)
 #+end_src
 
-**** key-chord
+*** key-chord
 #+begin_src emacs-lisp
   (use-package key-chord
     :init
@@ -308,7 +332,7 @@ Making Emacs useable
   (elpaca-wait)
 #+end_src
 
-*** Magit
+** Magit
 
 Git goodness
 
@@ -320,28 +344,66 @@ Git goodness
     ("C-c G" 'magit-file-dispatch))
 #+end_src
 
-*** Themes
+** Themes
 Nicer colors
 
-#+begin_src emacs-lisp
+#+begin_src emacs-lisp :tangle no
   ;; themes
   (use-package modus-themes
     :init
     (load-theme 'modus-operandi-tinted :no-confirm))
 #+end_src
 
-*** Eye Candy
+#+begin_src emacs-lisp
+  (use-package spacemacs-theme
+    :init
+    (load-theme 'spacemacs-light t))
+#+end_src
+
+** Eye Candy
+
+*** Tips from [[https://zzamboni.org/post/beautifying-org-mode-in-emacs/][this article on Beautifying Org-mode]]
+
+**** Hiding emphasis markings (e.g /.../ for italics, *...* for bold, etc):
+
+#+begin_src emacs-lisp
+  (setq org-hide-emphasis-markers t)
+#+end_src
+
+**** Font substitution to swap the look of "-" to a bullet:
+
+#+begin_src emacs-lisp
+  (font-lock-add-keywords 'org-mode
+                          '(("^ *\\([-]\\) "
+                             (0 (prog1 () (compose-region (match-beginning 1) (match-end 1) "•"))))))
+#+end_src
+
+**** Org-bullets
+
+#+begin_src emacs-lisp
+  (use-package org-bullets
+    :config
+    (add-hook 'org-mode-hook (lambda () (org-bullets-mode 1))))
+#+end_src
+
+
+**** =visual-line-mode=
+
+#+begin_src emacs-lisp
+  (setq visual-line-mode 1)
+#+end_src
+
+** modline mods
 
 - Remember to run =M-x all-the-icons-install-fonts=
 
 #+begin_src emacs-lisp
   (use-package all-the-icons)
   (use-package doom-modeline
-    :hook (after-init . doom-modeline-mode))
+    :init (doom-modeline-mode +1))
 #+end_src
 
-
-*** Yasnippet
+** Yasnippet
 
 #+begin_src emacs-lisp
   ;; yasnippet
@@ -351,17 +413,17 @@ Nicer colors
     (add-to-list 'yas-snippet-dirs (expand-file-name "snippets" user-local-tmp-config-dir))
     (setq yas-wrap-around-region t)
     (yas-reload-all)
-    :hook (after-init . yas-global-mode))
+    :init (yas-global-mode +1))
 
   (use-package yasnippet-snippets
     :ensure t)
 #+end_src
 
-*** Vertico, Orderless, Marginalia, Embark, Consult, Corfu
+** Vertico, Orderless, Marginalia, Embark, Consult, Corfu
 
 A series of helpful packages from =minad=. These all seem to go together. 
 
-**** Vertico
+*** Vertico
 Vertical completion UI for incremental minibuffer completion
 
 #+begin_src emacs-lisp 
@@ -376,7 +438,7 @@ Vertical completion UI for incremental minibuffer completion
     (savehist-mode))
 #+end_src
 
-**** Orderless
+*** Orderless
 More flexible completion styles in minibuffer filtering
 
 #+begin_src emacs-lisp
@@ -388,7 +450,7 @@ More flexible completion styles in minibuffer filtering
           completion-category-overrides '((file (styles partial-completion)))))
 #+end_src
 
-**** Marginalia
+*** Marginalia
 Rich minibuffer annotations
 
 #+begin_src emacs-lisp
@@ -400,41 +462,41 @@ Rich minibuffer annotations
     (marginalia-mode))
 #+end_src
 
-***** nerd-icons-completion
+**** nerd-icons-completion
 Not one of the =minad= packages, and maybe overkill
 
 Remember to run =M-x nerd-icons-install-fonts=
 
 #+begin_src emacs-lisp
-(use-package nerd-icons-completion
-  :after marginalia
-  :config
-  (nerd-icons-completion-mode)
-  (add-hook 'marginalia-mode-hook #'nerd-icons-completion-marginalia-setup))
+  (use-package nerd-icons-completion
+    :after marginalia
+    :config
+    (nerd-icons-completion-mode)
+    (add-hook 'marginalia-mode-hook #'nerd-icons-completion-marginalia-setup))
 #+end_src
 
-**** Embark
+*** Embark
 extra commands on object at the point in minibuffer
 #+begin_src emacs-lisp
-(use-package embark
-  :ensure t
-  :bind
-  (("C-." . embark-act)         ;; pick some comfortable binding
-   ("C-;" . embark-dwim)        ;; good alternative: M-.
-   ("C-h B" . embark-bindings)) ;; alternative for `describe-bindings'
-  :init
+  (use-package embark
+    :ensure t
+    :bind
+    (("C-." . embark-act)  ;; pick some comfortable binding
+     ("C-;" . embark-dwim)  ;; good alternative: M-.
+     ("C-h B" . embark-bindings)) ;; alternative for `describe-bindings'
+    :init
   ;; Optionally replace the key help with a completing-read interface
-  (setq prefix-help-command #'embark-prefix-help-command)
+    (setq prefix-help-command #'embark-prefix-help-command)
   ;; (add-hook 'eldoc-documentation-functions #'embark-eldoc-first-target)
   ;; (setq eldoc-documentation-strategy #'eldoc-documentation-compose-eagerly)
-  :config
-  (add-to-list 'display-buffer-alist
-               '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
-                 nil
-                 (window-parameters (mode-line-format . none)))))
+    :config
+    (add-to-list 'display-buffer-alist
+                 '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
+                   nil
+                   (window-parameters (mode-line-format . none)))))
 #+end_src
 
-**** Consult
+*** Consult
 additional completion commands
 #+begin_src emacs-lisp
   (use-package consult
@@ -457,7 +519,7 @@ additional completion commands
     :hook (completion-list-mode . consult-preview-at-point-mode))
 #+end_src
 
-**** Embark-Consult & Wgrep
+*** Embark-Consult & Wgrep
 #+begin_src emacs-lisp
   (use-package embark-consult
     :ensure t ; only need to install it, embark loads it after consult if found
@@ -466,7 +528,7 @@ additional completion commands
   (use-package wgrep)
 #+end_src
 
-**** Corfu
+*** Corfu
 
 #+begin_src emacs-lisp
   (use-package corfu
@@ -479,38 +541,38 @@ additional completion commands
     (setq tab-always-indent 'complete))
 #+end_src
 
-**** Capes
+*** Capes
 Testing this out. Not sure if I'll keep it
 #+begin_src emacs-lisp 
-;; Add extensions
-(use-package cape
+  ;; Add extensions
+  (use-package cape
   ;; Bind dedicated completion commands
   ;; Alternative prefix keys: C-c p, M-p, M-+, ...
-  :bind (("C-c p p" . completion-at-point) ;; capf
-         ("C-c p t" . complete-tag)        ;; etags
-         ("C-c p d" . cape-dabbrev)        ;; or dabbrev-completion
-         ("C-c p h" . cape-history)
-         ("C-c p f" . cape-file)
-         ("C-c p k" . cape-keyword)
-         ("C-c p s" . cape-elisp-symbol)
-         ("C-c p e" . cape-elisp-block)
-         ("C-c p a" . cape-abbrev)
-         ("C-c p l" . cape-line)
-         ("C-c p w" . cape-dict)
-         ("C-c p :" . cape-emoji)
-         ("C-c p \\" . cape-tex)
-         ("C-c p _" . cape-tex)
-         ("C-c p ^" . cape-tex)
-         ("C-c p &" . cape-sgml)
-         ("C-c p r" . cape-rfc1345))
-  :init
+    :bind (("C-c p p" . completion-at-point) ;; capf
+           ("C-c p t" . complete-tag)  ;; etags
+           ("C-c p d" . cape-dabbrev)  ;; or dabbrev-completion
+           ("C-c p h" . cape-history)
+           ("C-c p f" . cape-file)
+           ("C-c p k" . cape-keyword)
+           ("C-c p s" . cape-elisp-symbol)
+           ("C-c p e" . cape-elisp-block)
+           ("C-c p a" . cape-abbrev)
+           ("C-c p l" . cape-line)
+           ("C-c p w" . cape-dict)
+           ("C-c p :" . cape-emoji)
+           ("C-c p \\" . cape-tex)
+           ("C-c p _" . cape-tex)
+           ("C-c p ^" . cape-tex)
+           ("C-c p &" . cape-sgml)
+           ("C-c p r" . cape-rfc1345))
+    :init
   ;; Add to the global default value of `completion-at-point-functions' which is
   ;; used by `completion-at-point'.  The order of the functions matters, the
   ;; first function returning a result wins.  Note that the list of buffer-local
   ;; completion functions takes precedence over the global list.
-  (add-to-list 'completion-at-point-functions #'cape-dabbrev)
-  (add-to-list 'completion-at-point-functions #'cape-file)
-  (add-to-list 'completion-at-point-functions #'cape-elisp-block)
+    (add-to-list 'completion-at-point-functions #'cape-dabbrev)
+    (add-to-list 'completion-at-point-functions #'cape-file)
+    (add-to-list 'completion-at-point-functions #'cape-elisp-block)
   ;;(add-to-list 'completion-at-point-functions #'cape-history)
   ;;(add-to-list 'completion-at-point-functions #'cape-keyword)
   ;;(add-to-list 'completion-at-point-functions #'cape-tex)
@@ -520,10 +582,10 @@ Testing this out. Not sure if I'll keep it
   ;;(add-to-list 'completion-at-point-functions #'cape-dict)
   ;;(add-to-list 'completion-at-point-functions #'cape-elisp-symbol)
   ;;(add-to-list 'completion-at-point-functions #'cape-line)
-)
+    )
 #+end_src
 
-*** projects 
+** projects 
 #+begin_src emacs-lisp 
   ;; projects
   (use-package projectile
@@ -532,11 +594,11 @@ Testing this out. Not sure if I'll keep it
     :general
     ("C-c p" '(:keymap projectile-command-map :package projectile))
     :bind (:map projectile-mode-map
-           ("s-p" . projectile-command-map)
-           ("C-c p" . projectile-command-map)))
+                ("s-p" . projectile-command-map)
+                ("C-c p" . projectile-command-map)))
 #+end_src
 
-*** window managment
+** window managment
 
 #+begin_src emacs-lisp
   (use-package ace-window
@@ -546,18 +608,109 @@ Testing this out. Not sure if I'll keep it
     ("C-c w" 'ace-window))
 #+end_src
 
-*** terminals
+** terminals
 #+begin_src emacs-lisp
   (use-package vterm)
 #+end_src
 
+** spelling
+
+#+begin_src emacs-lisp
+  (use-package flyspell
+    :elpaca nil
+    :config
+    (setq flyspell-issue-message-flag nil
+          ispell-program-name "aspell"
+          ispell-extra-args '("--sug-mode=ultra" "--lang=en_US"))
+    (add-hook 'text-mode-hook 'flyspell-mode)
+    (add-hook 'prog-mode-hook 'flyspell-prog-mode))
+#+end_src
+
+** testing
+#+begin_src emacs-lisp 
+  ;; testing
+  <<testing>>
+#+end_src
 
 
 * Still to be done
 
 ** TODO org setting
 though default org is working pretty well
-** TODO 
 ** TODO Better way to add the =auto-tangle-mode.el= file
 [[https://github.com/progfolio/auto-tangle-mode.el][progfolio's auto-tangle-mode.el]] - for now I've just copied it into =/lisp= but there should be a way for me to pull it in like a package
 *** TODO explore pro/cons of this over [[https://github.com/yilkalargaw/org-auto-tangle][org-auto-tangle]]
+
+* Things that didn't work
+:PROPERTIES:
+:header-args: :tangle no 
+:END:
+** Some pretty things for org-mode
+
+**** Fancy Fonts
+
+Using [[https://edwardtufte.github.io/et-book/][Tufte's Book Fonts]]
+
+- this wasn't working though, as it turned everything to variable pitch, so I'm trying [[https://github.com/jabranham/mixed-pitch][mixed-pitch mode]] 
+
+#+begin_src emacs-lisp 
+   (let* ((variable-tuple
+           (cond ((x-list-fonts "ETBookOT")         '(:font "ETBookOT"))
+                 ((x-list-fonts "Source Sans Pro") '(:font "Source Sans Pro"))
+                 ((x-list-fonts "Lucida Grande")   '(:font "Lucida Grande"))
+                 ((x-list-fonts "Verdana")         '(:font "Verdana"))
+                 ((x-family-fonts "Sans Serif")    '(:family "Sans Serif"))
+                 (nil (warn "Cannot find a Sans Serif Font.  Install Source Sans Pro."))))
+          (base-font-color     (face-foreground 'default nil 'default))
+          (headline           `(:inherit default :weight bold :foreground ,base-font-color)))
+
+      (custom-theme-set-faces
+       'user
+       `(org-level-8 ((t (,@headline ,@variable-tuple))))
+       `(org-level-7 ((t (,@headline ,@variable-tuple))))
+       `(org-level-6 ((t (,@headline ,@variable-tuple))))
+       `(org-level-5 ((t (,@headline ,@variable-tuple))))
+       `(org-level-4 ((t (,@headline ,@variable-tuple :height 1.1))))
+       `(org-level-3 ((t (,@headline ,@variable-tuple :height 1.25))))
+       `(org-level-2 ((t (,@headline ,@variable-tuple :height 1.5))))
+       `(org-level-1 ((t (,@headline ,@variable-tuple :height 1.75))))
+       `(org-document-title ((t (,@headline ,@variable-tuple :height 2.0 :underline nil))))))
+#+end_src
+
+#+begin_src emacs-lisp :tangle no
+
+  (custom-theme-set-faces
+   'user
+   '(fixed-pitch ((t ( :family "Fira Code Retina" :height 1))))
+   '(variable-pitch ((t (:family "ETBookOT"  :weight thin)))))
+  
+  ; (add-hook 'org-mode-hook 'variable-pitch-mode)
+#+end_src
+
+**** mixed-pitch mode
+#+begin_src emacs-lisp 
+  (use-package mixed-pitch
+    :hook
+    (text-mode . mixed-pitch-mode))
+#+end_src
+**** alternate in org mode
+
+May require regular use of =M-q=
+
+#+begin_src emacs-lisp 
+  (add-hook 'org-mode-hook 'variable-pitch-mode)
+#+end_src
+
+
+* Testing
+#+name: testing
+#+begin_src emacs-lisp
+  (custom-theme-set-faces
+   'user
+   '(fixed-pitch ((t ( :family "Fira Code Retina" :height .9))))
+   '(variable-pitch ((t (:weight thin :inherit 'default :height 2.0)))))
+
+  (use-package mixed-pitch
+    :hook
+    (text-mode . mixed-pitch-mode))
+#+end_src
