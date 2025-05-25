@@ -1,0 +1,728 @@
+#+TITLE: Emacs Configuration
+#+PROPERTY: header-args :mkdirp yes :results silent
+
+* Overview
+
+This is a portable, narrative-driven, and maintainable literate configuration for Emacs.
+It uses [[https://github.com/progfolio/elpaca][Elpaca]] as the package manager, `evil` for modal editing, and provides Python andat/ChatGPT integration, plus modern completions and a beautiful, usable UI.
+With a single `config.org` and a local Makefile, you can bootstrap, update, or clean your setup *anywhere*.
+
+
+* Early Initialization
+:PROPERTIES:
+:header-args: :tangle early-init.el
+:END:
+
+** intro
+This section speeds up Emacs startup, sets the default frame size and font, and disables UI clutter. 
+Everything is relative to where you launch Emacs, so you can keep multiple parallel configs.
+
+#+begin_src emacs-lisp 
+  ;;; -*- lexical-binding: t; -*-
+  (setq package-enable-at-startup nil
+        inhibit-default-init nil
+        native-comp-async-report-warnings-errors nil
+        gc-cons-threshold most-positive-fixnum
+        gc-cons-percentage 1
+        server-client-instructions nil
+        frame-inhibit-implied-resize t
+        ring-bell-function #'ignore
+        inhibit-startup-screen t
+        default-frame-alist '((width . 200)
+                              (height . 300)
+                              (menu-bar-lines . 0)
+                              (tool-bar-lines . 0)
+                              (vertical-scroll-bars . nil)
+                              (font . "Fira Code Retina-14"))
+        )
+  (defvar default-file-name-handler-alist file-name-handler-alist)
+  (setq file-name-handler-alist nil)
+  (advice-add #'x-apply-session-resources :override #'ignore)
+#+end_src
+
+
+
+** custom dirs
+
+#+begin_src emacs-lisp
+  ;; custom dirs
+  (defun make-var-dir-pair (variable dir &optional path)
+    (let ((path (or path user-emacs-directory))
+          (target (expand-file-name dir path)))  
+      (unless (file-directory-p target) (make-directory target))
+      (set variable target)))
+  (defun make-var-dir-pairs-from-list (list)
+    (dolist (pair list) (apply 'make-var-dir-pair pair)))
+  (make-var-dir-pairs-from-list
+   '((user-local-tmp-config-dir ".config") 
+     (user-local-tmp-data-dir ".data"))) 
+  (when (fboundp 'startup-redirect-eln-cache)
+    (startup-redirect-eln-cache
+     (convert-standard-filename
+      (expand-file-name "eln-cache" user-local-tmp-data-dir))))
+  (setq package-user-dir (file-name-concat user-local-tmp-config-dir "elpa"))
+#+end_src
+
+** mac specific
+
+#+begin_src emacs-lisp
+  ;; mac specific
+  (when (eq system-type 'darwin)
+    (setq dired-use-ls-dired nil)
+    (add-to-list 'exec-path "~/homebrew/bin")
+    (add-to-list 'exec-path "/opt/homebrew/bin"))
+#+end_src
+
+** fonts
+
+#+begin_src emacs-lisp
+  ;; fonts
+  (push '(font . "Fira Code Retina") default-frame-alist)
+  (set-face-font 'default "Fira Code Retina 14")
+  (set-face-font 'variable-pitch "ETBookOT 14")
+  (copy-face 'default 'fixed-pitch)
+#+end_src
+
+** shallow cloning
+- sometimes this doesn't seem to work
+#+begin_src emacs-lisp
+  (setq elpaca-git-clone-arguments
+        '("--depth=1" "--single-branch" "--no-tags"))
+
+#+end_src
+
+** end
+
+#+begin_src emacs-lisp
+  (provide 'early-init)
+  ;;; early-init.el ends here
+#+end_src
+
+
+* Main Emacs Configuration
+:PROPERTIES:
+:header-args: :tangle init.el
+:END:
+
+This block loads Elpaca and then uses `use-package` for everything else. 
+All further configuration is done in logical sections below.
+
+** Elpaca package management
+Here we set up Elpaca so that all packages and builds are stored *locally* in the repo directory. 
+If you clone this somewhere else, everything just works.
+
+#+begin_src emacs-lisp 
+  ;; elpaca
+  (setq elpaca-core-date '(20250405)) ;; 
+  (defvar elpaca-installer-version 0.11)
+  (defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
+  (defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
+  (defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
+  (defvar elpaca-order '(elpaca :repo "https://github.com/progfolio/elpaca.git"
+                                :ref nil :depth 1 :inherit ignore
+                                :files (:defaults "elpaca-test.el" (:exclude "extensions"))
+                                :build (:not elpaca--activate-package)))
+  (let* ((repo  (expand-file-name "elpaca/" elpaca-repos-directory))
+         (build (expand-file-name "elpaca/" elpaca-builds-directory))
+         (order (cdr elpaca-order))
+         (default-directory repo))
+    (add-to-list 'load-path (if (file-exists-p build) build repo))
+    (unless (file-exists-p repo)
+      (make-directory repo t)
+      (when (<= emacs-major-version 28) (require 'subr-x))
+      (condition-case-unless-debug err
+          (if-let* ((buffer (pop-to-buffer-same-window "*elpaca-bootstrap*"))
+                    ((zerop (apply #'call-process `("git" nil ,buffer t "clone"
+                                                    ,@(when-let* ((depth (plist-get order :depth)))
+                                                        (list (format "--depth=%d" depth) "--no-single-branch"))
+                                                    ,(plist-get order :repo) ,repo))))
+                    ((zerop (call-process "git" nil buffer t "checkout"
+                                          (or (plist-get order :ref) "--"))))
+                    (emacs (concat invocation-directory invocation-name))
+                    ((zerop (call-process emacs nil buffer nil "-Q" "-L" "." "--batch"
+                                          "--eval" "(byte-recompile-directory \".\" 0 'force)")))
+                    ((require 'elpaca))
+                    ((elpaca-generate-autoloads "elpaca" repo)))
+              (progn (message "%s" (buffer-string)) (kill-buffer buffer))
+            (error "%s" (with-current-buffer buffer (buffer-string))))
+        ((error) (warn "%s" err) (delete-directory repo 'recursive))))
+    (unless (require 'elpaca-autoloads nil t)
+      (require 'elpaca)
+      (elpaca-generate-autoloads "elpaca" repo)
+      (let ((load-source-file-function nil)) (load "./elpaca-autoloads"))))
+  (add-hook 'after-init-hook #'elpaca-process-queues)
+  (elpaca `(,@elpaca-order))
+  (elpaca elpaca-use-package (elpaca-use-package-mode))
+  (setq use-package-always-ensure t)
+  (elpaca-wait)
+#+end_src
+
+*** adds a ~use-feature~ function which allows for adding settings and features to built-ins
+
+#+begin_src emacs-lisp
+  (defmacro use-feature (name &rest args)
+    "Like `use-package' but accounting for asynchronous installation.
+    NAME and ARGS are in `use-package'."
+    (declare (indent defun))
+    `(use-package ,name
+       :ensure nil
+       ,@args))
+
+#+end_src
+
+** Evil, Evil-Collection, Evil-Org
+
+This section sets up a full modal editing environment with Vim-like keys everywhere. 
+`evil-collection` extends this to Emacs' own major modes, and `evil-org` enables modal editing in Org-mode. 
+
+#+begin_src emacs-lisp
+  (setq evil-want-integration t
+        evil-want-keybinding nil
+        evil-want-C-i-jump nil)
+
+  (use-package evil
+    :ensure t
+    :demand t
+    :config (evil-mode 1))
+
+  (use-package evil-collection
+    :after evil
+    :config
+    (setq evil-collection-key-blacklist '("SPC"))
+    (evil-collection-init))
+
+  (use-package evil-org
+    :after org
+    :hook (org-mode . evil-org-mode)
+    :config (evil-org-set-key-theme '(textobjects insert navigation additional todo)))
+
+#+end_src
+
+** Org mode
+
+#+begin_src emacs-lisp
+  (use-package org
+    ;; Variables Org reads at load time, including native code-block fontification
+    :init
+    (setq org-src-fontify-natively   t
+          org-src-tab-acts-natively  t
+          org-startup-indented       t
+          org-ellipsis               "⤵ "
+          org-export-allow-bind-keywords t
+          org-directory              "~/org")
+
+    ;; Org-mode hooks for buffer-local features
+    :hook ((org-mode . org-indent-mode)
+           (org-mode . visual-line-mode))
+
+    :config
+    ;; Load the languages you want for Babel
+    (org-babel-do-load-languages
+     'org-babel-load-languages
+     '((emacs-lisp . t)
+       (python     . t)
+       (shell      . t)
+       (plantuml   . t)
+       (lilypond   . t)))
+
+    ;; Any further Org-specific configuration goes here...
+    ;; Ensure ox-latex is loaded
+    (require 'ox-latex)
+
+    ;; 1) Article class, unnumbered sections
+    (setq org-latex-default-class "article"
+          org-latex-classes
+          '(("article"
+             "\\documentclass[11pt]{article}"
+             ("\\section{%s}"      . "\\section*{%s}")
+             ("\\subsection{%s}"   . "\\subsection*{%s}")
+             ("\\subsubsection{%s}". "\\subsubsection*{%s}")
+             ("\\paragraph{%s}"    . "\\paragraph*{%s}")
+             ("\\subparagraph{%s}" . "\\subparagraph*{%s}"))))
+
+    ;; 2) Core packages + geometry + hyperref
+    (setq org-latex-packages-alist
+          '(("AUTO"     "inputenc"  t)
+            (""         "fontenc"   t)
+            (""         "graphicx"  t)
+            (""         "grffile"   t)
+            (""         "longtable" nil)
+            (""         "booktabs"  nil)
+            (""         "wrapfig"   nil)
+            (""         "amsmath"   t)
+            (""         "geometry"  t)
+            ("colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue"
+             "hyperref" nil)
+            (""         "minted"    t)
+            (""         "fvextra"   t)))
+
+    ;; 3) Use minted for source blocks
+    (setq org-latex-listings       'minted
+          org-latex-minted-options
+          '(("frame"     "lines")
+            ("linenos"   "")
+            ("breaklines" "")
+            ("fontsize"  "\\small")
+            ("style"     "colorful")))
+
+    ;; 4) Enable shell-escape in PDF builds
+    (setq org-latex-pdf-process
+          '("pdflatex -shell-escape -interaction nonstopmode -output-directory %o %f"
+            "pdflatex -shell-escape -interaction nonstopmode -output-directory %o %f"))
+
+    ;; 5) Disable title, TOC, numbering
+    (setq org-export-with-toc              nil
+          org-export-with-title            nil
+          org-export-with-section-numbers  nil
+          org-latex-toc-command            ""
+          org-latex-title-command          "")
+  )
+
+  (use-package org-modern
+    :hook
+    (org-mode . global-org-modern-mode)
+    :custom
+    (org-modern-star 'replace)
+    ;(org-modern-keyword nil)
+    ;(org-modern-checkbox nil)
+    ;(org-modern-table nil)
+    )
+#+end_src
+
+** Keybinding Management: 
+`key-chord` allows a fast escape from insert mode with `jk` or `kj`.
+`which-key` displays helpful popups for available keys.
+
+#+begin_src emacs-lisp
+  (use-package key-chord
+    :config
+    (setq key-chord-two-keys-delay 0.5)
+    (key-chord-mode 1)
+    (key-chord-define evil-insert-state-map "jk" 'evil-normal-state)
+    (key-chord-define evil-insert-state-map "kj" 'evil-normal-state))
+  #+end_src
+  #+begin_src emacs-lisp 
+  (use-package which-key
+    :config (which-key-mode))
+#+end_src  
+
+*** trying native keybinding functionality
+
+  #+begin_src emacs-lisp 
+    ;; Define the leader key map globally
+    (define-prefix-command 'leader-map)
+
+    ;; Delay keybindings until Evil is fully loaded
+    (with-eval-after-load 'evil
+      ;; Bind SPC to leader map in multiple states
+      (dolist (state '(normal visual emacs))
+        (let ((keymap (intern (format "evil-%s-state-map" state))))
+          (when (boundp keymap)
+            (define-key (symbol-value keymap) (kbd "SPC") 'leader-map))))
+
+      ;; Bind `,` to simulate `C-c` in normal mode
+      (define-key evil-normal-state-map (kbd ",")
+        (lambda () (interactive) (setq unread-command-events (listify-key-sequence (kbd "C-c"))))))
+    
+#+end_src  
+ #+begin_src emacs-lisp 
+   ;; Leader (SPC) key bindings
+   (define-key leader-map (kbd "/") #'consult-line)
+
+   (define-key leader-map (kbd "e i")
+     (lambda () (interactive)
+       (find-file (expand-file-name "config.org" user-emacs-directory))))
+
+   (define-key leader-map (kbd "e R")
+     (lambda () (interactive)
+       (load-file (expand-file-name "init.el" user-emacs-directory))))
+
+   (define-key leader-map (kbd "m a") #'org-agenda)
+   (define-key leader-map (kbd "m c") #'org-capture)
+
+   (with-eval-after-load 'which-key
+     (which-key-add-key-based-replacements
+       "SPC /" "search buffer"
+       "SPC e" "edit"
+       "SPC e i" "edit config"
+       "SPC e R" "reload config"
+       "SPC m" "misc/org"
+       "SPC m a" "agenda"
+       "SPC m c" "capture"))
+ #+end_src
+
+
+** Magit
+ #+begin_src emacs-lisp
+
+  ;; magit
+  (use-package transient :ensure t)
+  (use-package magit
+    :after transient
+    :bind 
+    (("C-c g" . magit-status)
+     ("C-c G" . magit-file-dispatch)))
+#+end_src
+
+** Cleaner config directory
+#+begin_src emacs-lisp
+  (use-package no-littering
+    :init
+    (setq no-littering-etc-directory user-local-tmp-config-dir
+          no-littering-var-directory user-local-tmp-data-dir)
+    :config
+    (no-littering-theme-backups))
+  (defun edit-init () (interactive) (find-file (concat user-emacs-directory "init.el")))
+  (setq custom-file (expand-file-name "custom.el" user-local-tmp-config-dir))
+#+end_src
+** VOMC
+#+begin_src emacs-lisp
+  (use-package all-the-icons)
+  (use-package nerd-icons)
+  (use-package vertico
+    :ensure t
+    :init
+    (vertico-mode))
+
+  (use-feature savehist
+    :init
+    (savehist-mode))
+
+  (use-package orderless
+    :ensure t
+    :init
+    (setq completion-styles '(orderless basic)
+          completion-category-defaults nil
+          Completion-category-overrides '((file (styles partial-completion)))))
+
+  (use-package marginalia
+    :ensure t
+    :bind (:map minibuffer-local-map
+                ("M-A" . marginalia-cycle))
+    :init
+    (marginalia-mode))
+
+  (use-package nerd-icons-completion
+    :after marginalia
+    :config
+    (nerd-icons-completion-mode)
+    (add-hook 'marginalia-mode-hook #'nerd-icons-completion-marginalia-setup))
+
+  (use-package consult
+    :bind
+    (("C-c b" . consult-buffer)
+     ("C-c m" . consult-man)
+     ("C-c i" . consult-info)
+     ("C-c h" . consult-history)
+     ("C-c M-x" . consult-mode-command)
+     ("M-s d" . consult-find)
+     ("M-s c" . consult-locate)
+     ("M-s g" . consult-grep)
+     ("M-s G" . consult-git-grep)
+     ("M-s r" . consult-ripgrep)
+     ("M-s l" . consult-line)
+     ("M-s L" . consult-line-multi)
+     ("M-s k" . consult-keep-lines)
+     ("M-s u" . consult-focus-lines)
+     ("M-s e" . consult-isearch-history))
+    :hook (completion-list-mode . consult-preview-at-point-mode))
+
+  (use-package corfu
+    :init
+    (global-corfu-mode))
+
+  (use-feature emacs
+    :init
+    (setq completion-cycle-threshold 3)
+    (setq tab-always-indent 'complete))
+  
+  (use-package embark
+    :ensure t
+    :bind
+    (("C-." . embark-act)  ;; pick some comfortable binding
+     ("C-;" . embark-dwim)  ;; good alternative: M-.
+     ("C-h B" . embark-bindings)) ;; alternative for `describe-bindings'
+    :init
+  ;; Optionally replace the key help with a completing-read interface
+    (setq prefix-help-command #'embark-prefix-help-command)
+  ;; (add-hook 'eldoc-documentation-functions #'embark-eldoc-first-target)
+  ;; (setq eldoc-documentation-strategy #'eldoc-documentation-compose-eagerly)
+    :config
+    (add-to-list 'display-buffer-alist
+                 '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
+                   nil
+                   (window-parameters (mode-line-format . none)))))
+#+end_src
+** Ace window
+#+begin_src emacs-lisp
+  (use-package ace-window
+    :init
+    (setq aw-dispatch-always t)
+    :bind
+    (("C-c w" . ace-window)))
+#+end_src
+** Vterm
+#+begin_src emacs-lisp
+  (use-package multi-vterm :ensure t)
+  (use-package vterm
+    :bind
+      ("C-c t" . vterm)
+  )
+#+end_src
+
+** Secrets management
+#+begin_src emacs-lisp
+  (defun my/auth-get-password (host user)
+    "Look up USER at HOST in ~/.authinfo.gpg and return its :password."
+    (let ((found (car (auth-source-search
+                       :host   host
+                       :user   user
+                       :require '(:password)))))
+      (when found
+        (plist-get found :password))))
+#+end_src
+** programming 
+#+begin_src emacs-lisp
+  ;; projects
+  (use-package projectile
+  :init
+  (projectile-mode +1)
+  :bind
+  (("C-c f f" . projectile-find-file)
+   ("C-c f r" . projectile-recentf))
+  :bind (:map projectile-mode-map
+              ("s-p" . projectile-command-map)
+              ("C-c p" . projectile-command-map)))
+
+
+  (use-feature flyspell
+    :config
+    (setq flyspell-issue-message-flag nil
+            ispell-program-name "aspell"
+            ispell-extra-args '("--sug-mode=ultra" "--lang=en_US"))
+    (add-hook 'text-mode-hook 'flyspell-mode)
+    (add-hook 'prog-mode-hook 'flyspell-prog-mode))
+  
+  (use-package flycheck
+    :ensure t
+    :config
+    (add-hook 'after-init-hook #'global-flycheck-mode))
+
+#+end_src
+*** Lilypond
+#+begin_src emacs-lisp 
+  (use-package lilypond-mode
+    :ensure (lilypond-mode
+             :host gitlab :repo "lilypond/lilypond"
+             :files ("elisp/*.el"))
+    :mode ("\\.ly\\'" . lilypond-mode)
+    :config
+    (setq lilypond-indent-level 2         ;; set indentation level (default is 2)
+          lilypond-inhibit-note-spacing t ;; example customization (if available)
+          org-babel-lilypond-ly-command (expand-file-name "/opt/homebrew/bin/lilypond") 
+          org-babel-lilypond-commands (list org-babel-lilypond-ly-command org-babel-lilypond-pdf-command org-babel-lilypond-midi-command) 
+          )
+  )
+
+#+end_src
+*** Python
+#+begin_src emacs-lisp
+  ;; Prefer tree-sitter Python mode
+  (add-to-list 'major-mode-remap-alist
+               '(python-mode . python-ts-mode))
+
+  ;; Eglot: built-in LSP client for Emacs 29+
+  (use-package eglot
+    :ensure nil
+    :hook ((python-ts-mode . eglot-ensure))
+    :config
+    (setq eglot-events-buffer-size 0) ;; silence LSP spam
+    ;; Optional: enable inlay hints if you like them
+    ;; (add-hook 'eglot-managed-mode-hook #'eglot-inlay-hints-mode)
+    )
+
+  ;; Ruff linter via Flymake
+  (use-package flymake-ruff
+    :hook (python-ts-mode . flymake-ruff-load))
+
+  ;; Use poetry-managed venv (syncs with Eglot)
+  (use-package pyvenv
+    :config
+    (pyvenv-mode 1))
+
+  ;; Consult integration with Eglot
+  (use-package consult-eglot
+    :after (consult eglot)
+    :bind (:map leader-map
+                ("s S" . consult-eglot-symbols)))
+
+  ;; Optional: code formatter
+  (use-package blacken
+    :hook (python-ts-mode . blacken-mode)
+    :custom
+    (blacken-line-length 88))
+
+  ;; Optional: UI enhancements
+  (use-package rainbow-delimiters
+    :hook (python-ts-mode . rainbow-delimiters-mode))
+
+  (use-package highlight-indent-guides
+    :hook (python-ts-mode . highlight-indent-guides-mode)
+    :custom
+    (highlight-indent-guides-method 'column))
+
+
+  (defun my/activate-poetry-venv ()
+  (interactive)
+  "Automatically activate Poetry's virtualenv in Emacs."
+  (when-let* ((venv-path (string-trim
+                         (shell-command-to-string "poetry env info --path 2>/dev/null"))))
+    (message "Activating poetry venv: %s" venv-path)
+    (pyvenv-activate venv-path)))
+
+  (add-hook 'python-ts-mode-hook #'my/activate-poetry-venv)
+
+#+end_src
+** AI interaction
+#+begin_src emacs-lisp
+  (use-package gptel
+    :config
+    (setq gptel-api-key (my/auth-get-password "api.openai.com" "OPENAI_API_KEY"))
+    (setq gptel-model "gpt-4o")
+    )
+
+  (use-package chatgpt-shell
+    :config
+    (setq chatgpt-shell-openai-key (my/auth-get-password "api.openai.com" "OPENAI_API_KEY")
+          chatgpt-shell-model-version "gpt-4o") ; or "gpt-4", "gpt-3.5-turbo", etc.
+    )
+
+#+end_src
+** some themes
+
+#+begin_src emacs-lisp
+  (use-package monokai-theme
+    :config
+    (setq monokai-distinct-fringe-background t
+          monokai-use-variable-pitch t
+          monokai-highlight "#016073" ;#373c3d or #214b53 (cyan)
+          monokai-highlight-alt  "#3c3d37" ;light/"#607301" or dark/"#3c3d37" or medium/"#4b5321" (green)
+          monokai-highlight-line "#730160") ;#3d373c or #53214b (magenta)
+    (load-theme 'monokai :no-confirm))
+  (use-package solarized-theme
+    :config
+    (setq solarized-distinct-fringe-background t
+          solarized-use-variable-pitch t
+          solarized-high-contrast-mode-line t
+          solarized-use-more-italic t)
+    ; (load-theme 'solarized-light :no-confirm)
+    )
+#+end_src
+** Some settings?
+
+#+begin_src emacs-lisp
+  (setq-default indent-tabs-mode nil
+                c-basic-indent 2
+                c-basic-offset 2
+                tab-width 2)
+  (recentf-mode 1)
+  (setq visual-line-mode 1)
+  (setq recentf-max-menu-items 25
+        recentf-max-saved-items 25
+        dired-dwim-target t)
+  (set-face-attribute 'variable-pitch nil
+                      :family "ETBookOT"
+                      :height 140)
+#+end_src
+** COMMENT Different defaults for  $\LaTeX$  export settings
+#+begin_src emacs-lisp 
+  (with-eval-after-load 'ox-latex
+    ;; Use the standard article class at 11pt, one-column
+    (setq org-latex-default-class "article"
+          org-latex-default-packages-alist
+          '(("AUTO"     "inputenc"  t)
+            (""         "fontenc"   t)
+            (""         "graphicx"  t)
+            (""         "grffile"   t)  ; handle multi-dot filenames
+            (""         "longtable" nil)
+            (""         "booktabs"  nil)  ; nicer rules for tables
+            (""         "wrapfig"   nil)  ; if you ever need text wrap
+            (""         "amsmath"   t)))
+
+    ;; Stop Org from inserting its own \usepackage{hyperref}
+    (setq org-latex-with-hyperref nil)
+
+    ;; Load geometry early, then hyperref exactly once with your options
+    (setq org-latex-packages-alist
+          '(("" "geometry" t)
+            ("colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue"
+             "hyperref" nil)))
+
+    ;; Disable titlepage, TOC, and section numbers
+    (setq org-latex-toc-command   ""
+          org-export-with-toc      nil
+          org-export-with-title    nil
+          org-export-with-section-numbers nil))
+#+end_src
+
+** Auto-Tangle and Live Reload
+
+Every time you save `config.org`, it re-tangles and reloads itself. 
+This means your Emacs stays in sync with your org file, making true literate configuration seamless.
+
+#+begin_src emacs-lisp 
+  (defun org-babel-tangle-config ()
+    (interactive)
+    (when (string-equal (buffer-file-name)
+                        (expand-file-name "config.org" user-emacs-directory))
+      (org-babel-tangle)
+      (load-file (expand-file-name "init.el" user-emacs-directory))
+      (elpaca-process-queues)))
+
+  (add-hook 'org-mode-hook
+            (lambda ()
+              (when (equal (buffer-file-name) ; only add hook if it's config.org
+                           (expand-file-name "config.org" user-emacs-directory))
+                (add-hook 'after-save-hook #'org-babel-tangle-config nil t))))
+
+  (setq org-confirm-babel-evaluate nil)
+#+end_src
+
+
+* Makefile for Bootstrapping and Cleanup
+:PROPERTIES:
+:header-args: :tangle Makefile
+:END:
+
+Run `make help` for usage.
+
+#+begin_src makefile 
+EMACS ?= emacs
+CONFIG ?= config.org
+CURDIR := $(shell pwd)
+
+.PHONY: all bootstrap clean-packages clean help
+
+all: bootstrap
+
+bootstrap:
+	@echo "Tangling org configuration..."
+	$(EMACS) --batch -l org --eval '(org-babel-tangle-file "$(CONFIG)")'
+	@echo "Bootstrap complete."
+
+clean-packages:
+	rm -rf ./elpaca
+	@echo "All packages in ./elpaca/ cleared."
+
+clean: clean-packages
+	rm -f ./init.el ./early-init.el ./lisp/*.el
+	@echo "Configuration cleaned. Only config.org and Makefile remain."
+
+help:
+	@echo "Emacs Configuration Management:"
+	@echo ""
+	@echo "  make bootstrap        Tangle and set up the Emacs configuration from config.org."
+	@echo "  make clean-packages   Remove all installed packages (forces reinstallation on next bootstrap)."
+	@echo "  make clean            Remove all generated configuration files, leaving only config.org and Makefile."
+	@echo "  make help             Show this help message."
+#+end_src
