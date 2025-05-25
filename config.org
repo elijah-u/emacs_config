@@ -587,15 +587,15 @@ This section sets up a full modal editing environment with Vim-like keys everywh
 ** AI interaction
 #+begin_src emacs-lisp
   (use-package gptel
-    :config
-    (setq gptel-api-key (my/auth-get-password "api.openai.com" "OPENAI_API_KEY"))
-    (setq gptel-model "gpt-4o")
+    :custom
+    (gptel-api-key (my/auth-get-password "api.openai.com" "OPENAI_API_KEY"))
+    (gptel-model "gpt-4o")
     )
 
   (use-package chatgpt-shell
-    :config
-    (setq chatgpt-shell-openai-key (my/auth-get-password "api.openai.com" "OPENAI_API_KEY")
-          chatgpt-shell-model-version "gpt-4o") ; or "gpt-4", "gpt-3.5-turbo", etc.
+    :custom
+    (chatgpt-shell-openai-key (my/auth-get-password "api.openai.com" "OPENAI_API_KEY"))
+    (chatgpt-shell-model-version "gpt-4o") ; or "gpt-4", "gpt-3.5-turbo", etc.
     )
 
 #+end_src
@@ -603,19 +603,21 @@ This section sets up a full modal editing environment with Vim-like keys everywh
 
 #+begin_src emacs-lisp
   (use-package monokai-theme
+    :custom
+    (monokai-distinct-fringe-background t)
+    (monokai-use-variable-pitch         t)
+    (monokai-highlight          "#016073");#373c3d or #214b53 (cyan)
+    (monokai-highlight-alt      "#3c3d37") ;light/"#607301" or dark/"#3c3d37" or medium/"#4b5321" (green)
+    (monokai-highlight-line     "#730160") ;#3d373c or #53214b (magenta)
     :config
-    (setq monokai-distinct-fringe-background t
-          monokai-use-variable-pitch t
-          monokai-highlight "#016073" ;#373c3d or #214b53 (cyan)
-          monokai-highlight-alt  "#3c3d37" ;light/"#607301" or dark/"#3c3d37" or medium/"#4b5321" (green)
-          monokai-highlight-line "#730160") ;#3d373c or #53214b (magenta)
     (load-theme 'monokai :no-confirm))
   (use-package solarized-theme
-    :config
-    (setq solarized-distinct-fringe-background t
-          solarized-use-variable-pitch t
-          solarized-high-contrast-mode-line t
-          solarized-use-more-italic t)
+    :custom
+    (solarized-distinct-fringe-background t)
+    (solarized-use-variable-pitch t)
+    (solarized-high-contrast-mode-line t)
+    (solarized-use-more-italic t)
+    ; :config
     ; (load-theme 'solarized-light :no-confirm)
     )
 #+end_src
