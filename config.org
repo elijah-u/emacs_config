@@ -594,10 +594,13 @@ This section sets up a full modal editing environment with Vim-like keys everywh
 
   (use-package chatgpt-shell
     :custom
+    ;; your API key via auth-source, as before
     (chatgpt-shell-openai-key (my/auth-get-password "api.openai.com" "OPENAI_API_KEY"))
-    (chatgpt-shell-model-version "gpt-4o") ; or "gpt-4", "gpt-3.5-turbo", etc.
-    )
-
+    ;; redirect history and session files into your local config dir:
+    (chatgpt-shell-history-file 
+      (expand-file-name "chatgpt-shell-history.el" user-local-tmp-config-dir))
+    (chatgpt-shell-session-file 
+      (expand-file-name "chatgpt-shell-session.el" user-local-tmp-config-dir)))
 #+end_src
 ** some themes
 
