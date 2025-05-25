@@ -463,11 +463,12 @@ This section sets up a full modal editing environment with Vim-like keys everywh
 #+end_src
 ** Vterm
 #+begin_src emacs-lisp
-  (use-package multi-vterm :ensure t)
   (use-package vterm
     :bind
       ("C-c t" . vterm)
   )
+  (use-package multi-vterm
+    :after vterm)
 #+end_src
 
 ** Secrets management
