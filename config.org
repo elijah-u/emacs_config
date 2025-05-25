@@ -374,6 +374,22 @@ This section sets up a full modal editing environment with Vim-like keys everywh
     (no-littering-theme-backups))
   (defun edit-init () (interactive) (find-file (concat user-emacs-directory "init.el")))
   (setq custom-file (expand-file-name "custom.el" user-local-tmp-config-dir))
+  ;; — Savehist (“history” file) goes under your config dir
+  (use-feature savehist
+    :custom
+    (savehist-file (expand-file-name "savehist" user-local-tmp-config-dir))
+    ;; any other savehist settings…
+    :init
+    (savehist-mode 1))
+
+  ;; — Recentf (recentf.eld) goes under your data dir
+  (use-feature recentf
+    :custom
+    (recentf-save-file (expand-file-name "recentf.eld" user-local-tmp-data-dir))
+    ;; Optionally tune how many items you keep:
+    (recentf-max-saved-items 200)
+    :init
+    (recentf-mode 1))
 #+end_src
 ** VOMC
 #+begin_src emacs-lisp
