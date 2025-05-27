@@ -480,24 +480,40 @@ This section sets up a full modal editing environment with Vim-like keys everywh
 ** Vterm
 #+begin_src emacs-lisp
   (use-package vterm
+    :ensure (vterm :post-build
+                   (progn
+                     (setq vterm-always-compile-module t)
+                     (require 'vterm)
+                     ;; Optional: log compile output for Elpaca
+                     (with-current-buffer (get-buffer-create vterm-install-buffer-name)
+                       (goto-char (point-min))
+                       (while (not (eobp))
+                         (message "%S" (buffer-substring (line-beginning-position) (line-end-position)))
+                         (forward-line)))
+                     ;; Symlink the compiled .so into Elpaca’s build tree, if needed
+                     (when-let* ((so (expand-file-name "./vterm-module.so"))
+                                 ((file-exists-p so)))
+                       (make-symbolic-link
+                        so (expand-file-name (file-name-nondirectory so) "../../builds/vterm")
+                        'ok-if-already-exists))))
     :bind
-      ("C-c t" . vterm)
-  )
+    ("C-c t" . vterm)
+    :commands (vterm vterm-other-window))
+  (elpaca-wait)
   (use-package multi-vterm
     :after vterm)
 #+end_src
 
 ** Secrets management
 #+begin_src emacs-lisp
-  (defun my/auth-get-password (host user)
-    "Look up USER at HOST in ~/.authinfo.gpg and return its :password."
-    (let ((found (car (auth-source-search
-                       :host   host
-                       :user   user
-                       :require '(:password)))))
-      (when found
-        (plist-get found :password))))
+  (use-feature epa-file
+    :config
+    (setq epg-pinetry-mode 'loopback)
+    (setq epg-gpg-program (executable-find "gpg"))
+    (epa-file-enable)
+    (setq epa-file-cache-passphrase-for-symmetric-encryption t))
 #+end_src
+
 ** programming 
 #+begin_src emacs-lisp
   ;; projects
@@ -601,22 +617,36 @@ This section sets up a full modal editing environment with Vim-like keys everywh
 
 #+end_src
 ** AI interaction
+*** gptel
 #+begin_src emacs-lisp
   (use-package gptel
     :custom
-    (gptel-api-key (my/auth-get-password "api.openai.com" "OPENAI_API_KEY"))
-    (gptel-model "gpt-4o")
+    (gptel-api-key (lambda () (auth-source-pick-first-password :host "api.openai.com")))
+    (gptel-model 'gpt-4o)
     )
+#+end_src
+
+*** chatgpt-shell
+- this package seems broken at the moment. It has a requirement that is missing ~markdown-overlays.el~
+#+begin_src emacs-lisp :tangle no
+  (use-package shell-maker
+    :ensure (:type git :host github :repo "xenodium/shell-maker" :files ("shell-maker*.el")))
 
   (use-package chatgpt-shell
+    :ensure (:type git :host github :repo "xenodium/chatgpt-shell" :files ("chatgpt-shell*.el"))
     :custom
-    ;; your API key via auth-source, as before
-    (chatgpt-shell-openai-key (my/auth-get-password "api.openai.com" "OPENAI_API_KEY"))
-    ;; redirect history and session files into your local config dir:
-    (chatgpt-shell-history-file 
-      (expand-file-name "chatgpt-shell-history.el" user-local-tmp-config-dir))
-    (chatgpt-shell-session-file 
-      (expand-file-name "chatgpt-shell-session.el" user-local-tmp-config-dir)))
+    ((chatgpt-shell-openai-key
+      (lambda ()
+        (auth-source-pass-get 'secret "openai-key")))))
+  (use-package chatgpt-shell
+    :after (shell-maker markdown-overlays)
+    :config
+    (setq chatgpt-shell-model-version "gpt-4o") ;; or "gpt-4", "gpt-3.5-turbo", etc.
+    (setq chatgpt-shell-openai-key
+          (lambda () (auth-source-pick-first-password :host "api.openai.com"))) 
+    :custom
+    (chatgpt-shell-root-path user-local-tmp-data-dir))
+
 #+end_src
 ** some themes
 
@@ -719,32 +749,42 @@ This means your Emacs stays in sync with your org file, making true literate con
 Run `make help` for usage.
 
 #+begin_src makefile 
-EMACS ?= emacs
-CONFIG ?= config.org
-CURDIR := $(shell pwd)
+  EMACS ?= emacs
+  CONFIG ?= config.org
+  CURDIR := $(shell pwd)
 
-.PHONY: all bootstrap clean-packages clean help
+  .PHONY: all bootstrap clean-packages clean-all clean help 
 
-all: bootstrap
+  all: bootstrap
 
-bootstrap:
-	@echo "Tangling org configuration..."
-	$(EMACS) --batch -l org --eval '(org-babel-tangle-file "$(CONFIG)")'
-	@echo "Bootstrap complete."
+  bootstrap:
+  	@echo "Tangling org configuration..."
+  	$(EMACS) --batch -l org --eval '(org-babel-tangle-file "$(CONFIG)")'
+  	@echo "Bootstrap complete."
 
-clean-packages:
-	rm -rf ./elpaca
-	@echo "All packages in ./elpaca/ cleared."
+  clean-packages:
+  	rm -rf ./elpaca
+  	@echo "All packages in ./elpaca/ cleared."
 
-clean: clean-packages
-	rm -f ./init.el ./early-init.el ./lisp/*.el
-	@echo "Configuration cleaned. Only config.org and Makefile remain."
+  clean-all:
+  	@echo "Removing all files/dirs except .git, .gitignore, config.org, Makefile..."
+  	@find . -mindepth 1 -maxdepth 1 \
+  	  ! -name '.git' \
+  	  ! -name '.gitignore' \
+  	  ! -name 'config.org' \
+  	  ! -name 'Makefile' \
+  	  -exec rm -rf {} +
+  	@echo "Clean-all complete."
 
-help:
-	@echo "Emacs Configuration Management:"
-	@echo ""
-	@echo "  make bootstrap        Tangle and set up the Emacs configuration from config.org."
-	@echo "  make clean-packages   Remove all installed packages (forces reinstallation on next bootstrap)."
-	@echo "  make clean            Remove all generated configuration files, leaving only config.org and Makefile."
-	@echo "  make help             Show this help message."
+  clean: clean-packages
+  	rm -f ./init.el ./early-init.el ./lisp/*.el
+  	@echo "Configuration cleaned. Only config.org and Makefile remain."
+
+  help:
+  	@echo "Emacs Configuration Management:"
+  	@echo ""
+  	@echo "  make bootstrap        Tangle and set up the Emacs configuration from config.org."
+  	@echo "  make clean-packages   Remove all installed packages (forces reinstallation on next bootstrap)."
+  	@echo "  make clean            Remove all generated configuration files, leaving only config.org and Makefile."
+  	@echo "  make help             Show this help message."
 #+end_src

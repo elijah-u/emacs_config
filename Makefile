@@ -2,7 +2,7 @@ EMACS ?= emacs
 CONFIG ?= config.org
 CURDIR := $(shell pwd)
 
-.PHONY: all bootstrap clean-packages clean help
+.PHONY: all bootstrap clean-packages clean-all clean help 
 
 all: bootstrap
 
@@ -14,6 +14,16 @@ bootstrap:
 clean-packages:
 	rm -rf ./elpaca
 	@echo "All packages in ./elpaca/ cleared."
+
+clean-all:
+	@echo "Removing all files/dirs except .git, .gitignore, config.org, Makefile..."
+	@find . -mindepth 1 -maxdepth 1 \
+	  ! -name '.git' \
+	  ! -name '.gitignore' \
+	  ! -name 'config.org' \
+	  ! -name 'Makefile' \
+	  -exec rm -rf {} +
+	@echo "Clean-all complete."
 
 clean: clean-packages
 	rm -f ./init.el ./early-init.el ./lisp/*.el
