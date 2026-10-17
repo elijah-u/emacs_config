@@ -701,8 +701,10 @@ step, inside Elpaca's build directory, right after the source files are linked t
 
 ** some themes
 I switch themes often (=consult-theme=), so org cosmetics that depend on the palette are
-derived from the active theme's background and re-applied by =enable-theme-functions=
-whenever a theme is enabled, rather than hard-coded for one theme.
+derived from the current background and re-applied by =enable-theme-functions= and
+=disable-theme-functions= whenever a theme changes, rather than hard-coded for one theme.
+The theme packages below are installed but none is loaded at startup; that costs only a
+load-path entry each, nothing is evaluated until a theme is chosen.
 - ghost stars: leading heading stars in a faint tint (leuven-style) instead of invisible,
   so the depth is still readable behind the org-modern glyph. 18 = percent shift.
 - source blocks: a subtle background so they stand out. 4 = percent shift.
@@ -740,6 +742,10 @@ are skipped; the `org' eval-after-load below re-runs this when they appear."
                                                    (t (list inh)))
                                              '(variable-pitch))))))))))
   (add-hook 'enable-theme-functions #'my/org-face-tweaks)
+  ;; Disabling a theme recalculates only the faces THAT theme defined, so after
+  ;; e.g. monokai -> "default" org-hide/org-block fall back to stock specs while
+  ;; after tango -> "default" they keep our values. Re-derive on disable as well.
+  (add-hook 'disable-theme-functions #'my/org-face-tweaks)
   (with-eval-after-load 'org
     (my/org-face-tweaks)
     ;; `org-mode' resets `org-hide' to the frame background on EVERY activation
@@ -768,9 +774,10 @@ are skipped; the `org' eval-after-load below re-runs this when they appear."
     (solarized-use-variable-pitch t)
     (solarized-high-contrast-mode-line t)
     (solarized-use-more-italic t)
-    :config
-    ;; plain solarized-light hides the src-block border lines; the variants keep them
-    (load-theme 'solarized-selenized-light :no-confirm))
+    ;; No theme is loaded at startup: the stock look plus the tweaks below is the
+    ;; default; pick a theme with `consult-theme' when the eyes want one. (Plain
+    ;; solarized-light hides the src-block border lines; the variants keep them.)
+    )
 #+end_src
 ** Some settings?
 
