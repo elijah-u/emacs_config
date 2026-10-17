@@ -24,15 +24,12 @@
 (with-eval-after-load 'elpaca
   (add-hook 'elpaca-after-init-hook '+reset-init-values))
 (setq default-frame-alist
-      '((width . 120)
-        (height . 300)
-        (left . 900)
-        (menu-bar-lines . 0)
-        (tool-bar-lines . 0) 
-        (vertical-scroll-bars . nil)))
-;(push '(menu-bar-lines . 0) default-frame-alist)
-;(push '(tool-bar-lines . 0) default-frame-alist)
-;(push '(vertical-scroll-bars) default-frame-alist)
+      ' ((menu-bar-lines . 0)
+         (tool-bar-lines . 0) 
+         (width . 120)
+;        (height . 300)
+;        (left . 900)
+         (vertical-scroll-bars . nil)))
 (setq server-client-instructions nil)
 (setq frame-inhibit-implied-resize t)
 (advice-add #'x-apply-session-resources :override #'ignore)
@@ -56,10 +53,11 @@
 (setq package-user-dir (file-name-concat "elpa" user-local-tmp-config-dir))
 
 ;fonts
-(push '(font . "Source Code Pro") default-frame-alist)
-(set-face-font 'default "Source Code Pro")
-(set-face-font 'variable-pitch "DejaVu Sans")
-(copy-face 'default 'fixed-pitch)
+;(push '(font . "Source Code Pro") default-frame-alist)
+;(set-face-font 'default "Source Code Pro")
+;(set-face-font 'variable-pitch "DejaVu Sans")
+;(copy-face 'default 'fixed-pitch)
+
 ;end
 (provide 'early-init)
 ;;; early-init.el ends here

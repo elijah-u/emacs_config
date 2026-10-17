@@ -63,7 +63,3 @@
   :general
   ("C-c g" 'magit-status)
   ("C-c G" 'magit-file-dispatch))
-;; themes
-(use-package modus-themes
-  :init
-  (load-theme 'modus-operandi-tinted :no-confirm))
