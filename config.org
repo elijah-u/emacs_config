@@ -355,7 +355,7 @@ This section sets up a full modal editing environment with Vim-like keys everywh
  #+begin_src emacs-lisp 
    ;; Leader (SPC) key bindings
    (define-key leader-map (kbd "/") #'consult-line)
-   (define-key leader-map (kbd "t") #'multi-vterm)
+   (define-key leader-map (kbd "t") #'ghostel)   ; SPC u SPC t = another terminal
 
    (define-key leader-map (kbd "e i")
      (lambda () (interactive)
@@ -507,27 +507,34 @@ This section sets up a full modal editing environment with Vim-like keys everywh
     :bind
     (("C-c w" . ace-window)))
 #+end_src
-** Vterm
-Elpaca 0.12 replaced the =:pre-build= / =:post-build= recipe keywords with =:build=
-(the old keywords are silently ignored). vterm prompts to compile its dynamic module the
-first time =vterm.el= is loaded, and that prompt hangs Elpaca's batch byte-compiler for
-anything that requires vterm (multi-vterm). So compile the module as an explicit build
-step, inside Elpaca's build directory, right after the source files are linked there.
+** Terminal: ghostel
+Replaces vterm + multi-vterm (2026-10). ghostel is a terminal built on libghostty-vt
+(Ghostty's VT engine). Same approach as vterm but: no local toolchain (it downloads a
+prebuilt module on first use, =M-x ghostel-download-module= to redo), faster, Kitty
+keyboard protocol, OSC 8 links, synchronized output (helps Claude Code redraws),
+auto shell integration for zsh. Prefix arg to =ghostel= opens another terminal;
+=consult-ghostel= picks between them. Known: ESC goes to alt-screen apps (vim, Claude
+Code fullscreen) by default; =C-c C-r= toggles that, =C-c ESC= forces normal state.
 #+begin_src emacs-lisp
-  (elpaca-defscript +vterm-compile-module (:type elisp :dir build)
-    "Compile vterm's dynamic module inside Elpaca's build directory."
-    (add-to-list 'load-path default-directory)
-    (setq vterm-always-compile-module t)
-    (require 'vterm))
+  (use-package ghostel
+    :commands (ghostel ghostel-project ghostel-other)
+    :custom
+    ;; keep the downloaded module out of Elpaca's build tree (rebuilds would delete it)
+    (ghostel-module-directory (expand-file-name "ghostel-module" user-local-tmp-data-dir))
+    (ghostel-buffer-name-function #'ghostel-buffer-name-by-directory)
+    ;; if a TUI misbehaves under TERM=xterm-ghostty, try: (ghostel-term "xterm-256color")
+    )
 
-  (use-package vterm
-    :ensure (vterm :build (:after elpaca-build-link +vterm-compile-module))
-    :commands (vterm vterm-other-window))
-  (elpaca-wait)
-  (use-package multi-vterm
-    :bind
-    ("C-c t" . multi-vterm)
-    :after vterm)
+  (use-package evil-ghostel
+    :after (ghostel evil)
+    :hook (ghostel-mode . evil-ghostel-mode))
+
+  (use-package consult-ghostel
+    :after (ghostel consult)
+    :hook (after-init . consult-ghostel-mode)
+    :bind (("C-c t" . consult-ghostel)          ; C-u = new terminal
+           :map ghostel-semi-char-mode-map
+           ("C-c h" . consult-ghostel-history)))
 #+end_src
 
 ** Secrets management
