@@ -1,3 +1,7 @@
 /elpaca/
 /*.el
 /.data/
+/eln-cache/
+/tree-sitter/
+/.config/
+*~

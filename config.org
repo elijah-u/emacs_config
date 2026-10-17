@@ -91,6 +91,20 @@ Everything is relative to where you launch Emacs, so you can keep multiple paral
 
 #+end_src
 
+** suggested for performance?
+#+begin_src emacs-lisp 
+  (add-hook 'emacs-startup-hook
+            (lambda ()
+              (setq gc-cons-threshold 16777216) ; 16mb
+              (setq gc-cons-percentage 0.1)))
+#+end_src
+
+#+begin_src emacs-lisp
+  (add-hook 'emacs-startup-hook
+              (lambda ()
+              (setq file-name-handler-alist default-file-name-handler-alist)))
+#+end_src
+
 ** end
 
 #+begin_src emacs-lisp
@@ -112,6 +126,9 @@ Here we set up Elpaca so that all packages and builds are stored *locally* in th
 If you clone this somewhere else, everything just works.
 
 #+begin_src emacs-lisp 
+  ;;; -*- lexical-binding: t; -*-
+
+  ;; !!!!! this file is genrated from config.org -- edit it with the understading that it will likely get overwritten !!!! 
   ;; elpaca
   (setq elpaca-core-date '(20250405)) ;; 
   (defvar elpaca-installer-version 0.11)
@@ -278,15 +295,15 @@ This section sets up a full modal editing environment with Vim-like keys everywh
           org-latex-title-command          "")
   )
 
-  (use-package org-modern
-    :hook
-    (org-mode . global-org-modern-mode)
-    :custom
-    (org-modern-star 'replace)
-    ;(org-modern-keyword nil)
-    ;(org-modern-checkbox nil)
-    ;(org-modern-table nil)
-    )
+;  (use-package org-modern
+;    :hook
+;    (org-mode . global-org-modern-mode)
+;    :custom
+;    (org-modern-star 'replace)
+;    ;(org-modern-keyword nil)
+;    ;(org-modern-checkbox nil)
+;    (org-modern-table nil)
+;    )
 #+end_src
 
 ** Keybinding Management: 
@@ -328,6 +345,7 @@ This section sets up a full modal editing environment with Vim-like keys everywh
  #+begin_src emacs-lisp 
    ;; Leader (SPC) key bindings
    (define-key leader-map (kbd "/") #'consult-line)
+   (define-key leader-map (kbd "t") #'multi-vterm)
 
    (define-key leader-map (kbd "e i")
      (lambda () (interactive)
@@ -355,13 +373,15 @@ This section sets up a full modal editing environment with Vim-like keys everywh
 ** Magit
  #+begin_src emacs-lisp
 
-  ;; magit
-  (use-package transient :ensure t)
-  (use-package magit
-    :after transient
-    :bind 
-    (("C-c g" . magit-status)
-     ("C-c G" . magit-file-dispatch)))
+   ;; magit
+   (use-package cond-let 
+       :ensure (:type git :host github :repo "tarsius/cond-let"))
+   (use-package transient :ensure t)
+   (use-package magit
+       :after (transient cond-let)
+       :bind 
+       (("C-c g" . magit-status)
+           ("C-c G" . magit-file-dispatch)))
 #+end_src
 
 ** Cleaner config directory
@@ -496,11 +516,11 @@ This section sets up a full modal editing environment with Vim-like keys everywh
                        (make-symbolic-link
                         so (expand-file-name (file-name-nondirectory so) "../../builds/vterm")
                         'ok-if-already-exists))))
-    :bind
-    ("C-c t" . vterm)
     :commands (vterm vterm-other-window))
   (elpaca-wait)
   (use-package multi-vterm
+    :bind
+    ("C-c t" . multi-vterm)
     :after vterm)
 #+end_src
 
@@ -508,7 +528,7 @@ This section sets up a full modal editing environment with Vim-like keys everywh
 #+begin_src emacs-lisp
   (use-feature epa-file
     :config
-    (setq epg-pinetry-mode 'loopback)
+    (setq epg-pinentry-mode 'loopback)
     (setq epg-gpg-program (executable-find "gpg"))
     (epa-file-enable)
     (setq epa-file-cache-passphrase-for-symmetric-encryption t))
@@ -552,11 +572,12 @@ This section sets up a full modal editing environment with Vim-like keys everywh
     :config
     (setq lilypond-indent-level 2         ;; set indentation level (default is 2)
           lilypond-inhibit-note-spacing t ;; example customization (if available)
-          org-babel-lilypond-ly-command (expand-file-name "/opt/homebrew/bin/lilypond") 
+          ;; org-babel-lilypond-ly-command (expand-file-name "/opt/homebrew/bin/lilypond") 
           org-babel-lilypond-commands (list org-babel-lilypond-ly-command org-babel-lilypond-pdf-command org-babel-lilypond-midi-command) 
           )
   )
-
+  ;; (setq org-babel-lilypond-commands (expand-file-name "/opt/homebrew/bin/lilypond"))
+  ;; (setq org-babel-lilypond-ly-command (expand-file-name "/opt/homebrew/bin/lilypond"))
 #+end_src
 *** Python
 #+begin_src emacs-lisp
@@ -572,6 +593,7 @@ This section sets up a full modal editing environment with Vim-like keys everywh
     (setq eglot-events-buffer-size 0) ;; silence LSP spam
     ;; Optional: enable inlay hints if you like them
     ;; (add-hook 'eglot-managed-mode-hook #'eglot-inlay-hints-mode)
+    (setq eglot-autoshutdown t)
     )
 
   ;; Ruff linter via Flymake
@@ -616,14 +638,27 @@ This section sets up a full modal editing environment with Vim-like keys everywh
   (add-hook 'python-ts-mode-hook #'my/activate-poetry-venv)
 
 #+end_src
+
 ** AI interaction
+
 *** gptel
 #+begin_src emacs-lisp
   (use-package gptel
+    :bind (("C-c a" . gptel)
+           ("C-c A" . gptel-menu))
     :custom
-    (gptel-api-key (lambda () (auth-source-pick-first-password :host "api.openai.com")))
-    (gptel-model 'gpt-4o)
-    )
+    ;; Set the API key retrieval function
+    (gptel-api-key (lambda () (auth-source-pick-first-password :host "api.anthropic.com")))
+    ;; Use a valid Claude model name
+    :config
+    ;; Configure the Anthropic backend with proper API key association
+    (setq gptel-model "claude-sonnet-4-20250514")
+    (setq gptel-backend 
+          (gptel-make-anthropic "Claude"
+                                :stream t
+                                :key (lambda () (auth-source-pick-first-password :host "api.anthropic.com"))))
+    ;; Set as default backend
+    (setq gptel-default-mode 'org-mode))
 #+end_src
 
 *** chatgpt-shell
@@ -634,22 +669,39 @@ This section sets up a full modal editing environment with Vim-like keys everywh
 
   (use-package chatgpt-shell
     :ensure (:type git :host github :repo "xenodium/chatgpt-shell" :files ("chatgpt-shell*.el"))
-    :custom
-    ((chatgpt-shell-openai-key
-      (lambda ()
-        (auth-source-pass-get 'secret "openai-key")))))
-  (use-package chatgpt-shell
     :after (shell-maker markdown-overlays)
     :config
-    (setq chatgpt-shell-model-version "gpt-4o") ;; or "gpt-4", "gpt-3.5-turbo", etc.
-    (setq chatgpt-shell-openai-key
-          (lambda () (auth-source-pick-first-password :host "api.openai.com"))) 
+    (setq chatgpt-shell-model-version "claude-sonnet-4")
+    (setq chatgpt-shell-anthropic-key
+          (lambda () (auth-source-pick-first-password :host "api.anthropic.com"))) 
+    ;(setq chatgpt-shell-model-version "gpt-4o") ;; or "gpt-4", "gpt-3.5-turbo", etc.
+    ;(setq chatgpt-shell-openai-key
+    ;      (lambda () (auth-source-pick-first-password :host "api.openai.com"))) 
     :custom
     (chatgpt-shell-root-path user-local-tmp-data-dir))
 
 #+end_src
-** some themes
+*** aidermacs
+#+begin_src emacs-lisp
+(use-package aidermacs
+  :bind (("C-c a" . aidermacs-transient-menu))
+  :config
+  ; Set API_KEY in .bashrc, that will automatically picked up by aider or in elisp
+  (setenv "ANTHROPIC_API_KEY" "sk-...")
+  ; defun my-get-openrouter-api-key yourself elsewhere for security reasons
+  ;(setenv "OPENROUTER_API_KEY" (my-get-openrouter-api-key))
+  :custom
+  ; See the Configuration section below
+  (aidermacs-default-chat-mode 'architect)
+  (aidermacs-default-model "sonnet"))
+#+end_src
 
+** some themes
+(require 'color)
+(set-face-attribute 'org-block nil :background
+                    (color-darken-name
+                     (face-attribute 'default :background) 15))
+                     
 #+begin_src emacs-lisp
   (use-package monokai-theme
     :custom
@@ -658,8 +710,9 @@ This section sets up a full modal editing environment with Vim-like keys everywh
     (monokai-highlight          "#016073");#373c3d or #214b53 (cyan)
     (monokai-highlight-alt      "#3c3d37") ;light/"#607301" or dark/"#3c3d37" or medium/"#4b5321" (green)
     (monokai-highlight-line     "#730160") ;#3d373c or #53214b (magenta)
-    :config
-    (load-theme 'monokai :no-confirm))
+    ;:config
+    ;(load-theme 'monokai :no-confirm))
+    )
   (use-package solarized-theme
     :custom
     (solarized-distinct-fringe-background t)
@@ -740,6 +793,18 @@ This means your Emacs stays in sync with your org file, making true literate con
   (setq org-confirm-babel-evaluate nil)
 #+end_src
 
+** Measure Startup Speed
+
+#+begin_src elisp
+;; At the end of init.el
+(add-hook 'emacs-startup-hook
+            (lambda ()
+            (message "Emacs loaded in %s with %d garbage collections."
+                    (format "%.2f seconds"
+                            (float-time
+                                (time-subtract after-init-time before-init-time)))
+                    gcs-done)))
+#+end_src
 
 * Makefile for Bootstrapping and Cleanup
 :PROPERTIES:
@@ -788,3 +853,4 @@ Run `make help` for usage.
   	@echo "  make clean            Remove all generated configuration files, leaving only config.org and Makefile."
   	@echo "  make help             Show this help message."
 #+end_src
+
