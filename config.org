@@ -529,12 +529,14 @@ Code fullscreen) by default; =C-c C-r= toggles that, =C-c ESC= forces normal sta
     :after (ghostel evil)
     :hook (ghostel-mode . evil-ghostel-mode))
 
+  ;; No :after / after-init hook here: Elpaca evaluates this form after init has
+  ;; already run, so the upstream `after-init' hook never fires. The binding is an
+  ;; autoload; the mode (consult-buffer sources, bookmarks) is enabled on first load.
   (use-package consult-ghostel
-    :after (ghostel consult)
-    :hook (after-init . consult-ghostel-mode)
     :bind (("C-c t" . consult-ghostel)          ; C-u = new terminal
            :map ghostel-semi-char-mode-map
-           ("C-c h" . consult-ghostel-history)))
+           ("C-c h" . consult-ghostel-history))
+    :config (consult-ghostel-mode 1))
 #+end_src
 
 ** Secrets management
