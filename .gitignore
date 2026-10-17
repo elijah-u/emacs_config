@@ -1,0 +1,8 @@
+/.chatgpt-shell.el
+/.config/
+/.data/
+/*.el
+/elpaca/
+/recentf.eld
+/transient/
+/history
