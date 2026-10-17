@@ -70,6 +70,7 @@ The following is a table shows values from popular Emacs configurations.
 #+end_src
 
 ** not sure what this does
+- does this cause issues loading before elpaca does?
 
 #+begin_src emacs-lisp
   (with-eval-after-load 'elpaca
@@ -123,8 +124,11 @@ Unsure if the =native-comp-driver-option= bit is needed. Has been working fine w
   (when (eq system-type 'darwin)
     (setq dired-use-ls-dired nil)
     (add-to-list 'exec-path "~/homebrew/bin")
+    (add-to-list 'exec-path "/opt/homebrew/bin")
+    (setenv "PATH" "~/.asdf/shims:/opt/homebrew/opt/asdf/libexec/bin:/opt/homebrew/opt/sqlite/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Library/Apple/usr/bin:/Library/TeX/texbin:/Applications/iTerm.app/Contents/Resources/utilities:~/.local/bin:~/.local/bin"
   ; (customize-set-variable 'native-comp-driver-options '("-Wl,-w"))
     )
+   )
 #+end_src
 
 ** Some default fonts
@@ -162,37 +166,39 @@ Why does most of this not come inside the elpaca package, instead of as boilerpl
 
 #+begin_src emacs-lisp :mkdirp yes :tangle lisp/elpaca-init.el
   ;; elpaca init
-  (defvar elpaca-installer-version 0.6)
+  (defvar elpaca-installer-version 0.8)
   (defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
   (defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
   (defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
   (defvar elpaca-order '(elpaca :repo "https://github.com/progfolio/elpaca.git"
-                                :ref nil
-                                :files (:defaults "elpaca-test.el" (:exclude "extensions"))
-                                :build (:not elpaca--activate-package)))
+                              :ref nil :depth 1
+                              :files (:defaults "elpaca-test.el" (:exclude "extensions"))
+                              :build (:not elpaca--activate-package)))
   (let* ((repo  (expand-file-name "elpaca/" elpaca-repos-directory))
-         (build (expand-file-name "elpaca/" elpaca-builds-directory))
-         (order (cdr elpaca-order))
-         (default-directory repo))
-    (add-to-list 'load-path (if (file-exists-p build) build repo))
-    (unless (file-exists-p repo)
+      (build (expand-file-name "elpaca/" elpaca-builds-directory))
+      (order (cdr elpaca-order))
+      (default-directory repo))
+  (add-to-list 'load-path (if (file-exists-p build) build repo))
+  (unless (file-exists-p repo)
       (make-directory repo t)
       (when (< emacs-major-version 28) (require 'subr-x))
       (condition-case-unless-debug err
-          (if-let ((buffer (pop-to-buffer-same-window "*elpaca-bootstrap*"))
-                   ((zerop (call-process "git" nil buffer t "clone"
-                                         (plist-get order :repo) repo)))
-                   ((zerop (call-process "git" nil buffer t "checkout"
-                                         (or (plist-get order :ref) "--"))))
-                   (emacs (concat invocation-directory invocation-name))
-                   ((zerop (call-process emacs nil buffer nil "-Q" "-L" "." "--batch"
-                                         "--eval" "(byte-recompile-directory \".\" 0 'force)")))
-                   ((require 'elpaca))
-                   ((elpaca-generate-autoloads "elpaca" repo)))
+          (if-let* ((buffer (pop-to-buffer-same-window "*elpaca-bootstrap*"))
+                  ((zerop (apply #'call-process `("git" nil ,buffer t "clone"
+                                                  ,@(when-let* ((depth (plist-get order :depth)))
+                                                      (list (format "--depth=%d" depth) "--no-single-branch"))
+                                                  ,(plist-get order :repo) ,repo))))
+                  ((zerop (call-process "git" nil buffer t "checkout"
+                                          (or (plist-get order :ref) "--"))))
+                  (emacs (concat invocation-directory invocation-name))
+                  ((zerop (call-process emacs nil buffer nil "-Q" "-L" "." "--batch"
+                                          "--eval" "(byte-recompile-directory \".\" 0 'force)")))
+                  ((require 'elpaca))
+                  ((elpaca-generate-autoloads "elpaca" repo)))
               (progn (message "%s" (buffer-string)) (kill-buffer buffer))
-            (error "%s" (with-current-buffer buffer (buffer-string))))
-        ((error) (warn "%s" err) (delete-directory repo 'recursive))))
-    (unless (require 'elpaca-autoloads nil t)
+          (error "%s" (with-current-buffer buffer (buffer-string))))
+      ((error) (warn "%s" err) (delete-directory repo 'recursive))))
+  (unless (require 'elpaca-autoloads nil t)
       (require 'elpaca)
       (elpaca-generate-autoloads "elpaca" repo)
       (load "./elpaca-autoloads")))
@@ -202,10 +208,13 @@ Why does most of this not come inside the elpaca package, instead of as boilerpl
   (provide 'elpaca-init)
 #+end_src
 
+
+
 *** elpaca startup in =init.el=
 
 #+begin_src emacs-lisp
   ;; elpaca for package management
+  (add-to-list 'load-path (expand-file-name "/opt/homebrew/share/emacs/site-lisp/"))
   (add-to-list 'load-path (concat user-emacs-directory "lisp"))
   (require 'elpaca-init)
   (elpaca elpaca-use-package
@@ -213,6 +222,36 @@ Why does most of this not come inside the elpaca package, instead of as boilerpl
     (setq elpaca-use-package-by-default t))
   (elpaca-wait)
 #+end_src
+
+*** fix for issue with upgrading =seq=
+- https://github.com/progfolio/elpaca/issues/216
+
+#+begin_src emacs-lisp
+  (defun +elpaca-unload-seq (e)
+    (and (featurep 'seq) (unload-feature 'seq t))
+    (elpaca--continue-build e))
+
+  (defun +elpaca-seq-build-steps ()
+    (append (butlast (if (file-exists-p (expand-file-name "seq" elpaca-builds-directory))
+                         elpaca--pre-built-steps elpaca-build-steps))
+            (list '+elpaca-unload-seq 'elpaca--activate-package)))
+
+  (use-package seq :ensure `(seq :build ,(+elpaca-seq-build-steps)))
+#+end_src
+
+*** helper functions for elpaca
+
+#+begin_src emacs-lisp 
+  (defmacro use-feature (name &rest args)
+    "Like `use-package' but accounting for asynchronous installation.
+    NAME and ARGS are in `use-package'."
+    (declare (indent defun))
+    `(use-package ,name
+       :ensure nil
+       ,@args))
+#+end_src
+
+
 
 ** No Littering
 
@@ -242,8 +281,13 @@ Why does most of this not come inside the elpaca package, instead of as boilerpl
   (recentf-mode 1)
   (setq recentf-max-menu-items 25)
   (setq recentf-max-saved-items 25)
+  (setq dired-dwim-target t)
 #+end_src
 
+#+begin_src emacs-lisp
+  (setq help-window-select t) ; Switch to help buffers automatically
+
+#+end_src
 ** Evil mode
 Making Emacs useable
 
@@ -278,12 +322,11 @@ Making Emacs useable
                 (evil-org-set-key-theme '(textobjects insert navigation additional todo)))))
 #+end_src
 
-
 ** Org Mode
 
 #+begin_src emacs-lisp
   (use-package org
-    :elpaca nil
+    :ensure nil
     :config
     (setq
      org-src-fontify-natively nil
@@ -291,7 +334,14 @@ Making Emacs useable
      org-directory "~/org"
      org-ellipsis "⤵")
     (org-babel-do-load-languages
-     'org-babel-load-languages '((python . t))))
+     'org-babel-load-languages
+     '((python . t)
+       (emacs-lisp . t)
+       (shell . t)
+       (plantuml . t)
+       (lilypond . t)
+       ))
+    )
 
 #+end_src
 
@@ -311,13 +361,28 @@ Making Emacs useable
     :config 
     (general-evil-setup t)
     (general-define-key
-     :states 'normal
-     :keymaps 'override
-     "," (general-simulate-key "C-c"))
+        :states 'normal
+        :keymaps 'override
+        "," (general-simulate-key "C-c"))
+    (general-define-key
+        :keymaps '(normal insert emacs)
+        :prefix "SPC"
+        :non-normal-prefix "M-SPC"
+        "/" 'consult-line
+        "e" '(:ignore t :which-key "edit")
+        "ei" 'edit-init
+        "eR" 'reload-init)
+    (general-create-definer my-leader-def
+        :prefix "SPC m")
+    (my-leader-def
+        :keymaps 'normal
+        "a" 'org-agenda
+        "b" 'consult-bookmark
+        "c" 'org-capture)
     )
   (elpaca-wait)
-#+end_src
 
+#+end_src
 *** key-chord
 #+begin_src emacs-lisp
   (use-package key-chord
@@ -347,6 +412,20 @@ Git goodness
 ** Themes
 Nicer colors
 
+#+begin_src emacs-lisp
+  (load-theme 'leuven)
+;;  (use-package solarized-theme
+;;    :config
+;;    (setq solarized-distinct-fringe-background t
+;;          solarized-use-variable-pitch t
+;;          solarized-high-contrast-mode-line t
+;;          solarized-use-more-italic t)
+;;    :init
+;;    (load-theme 'solarized-light :no-confirm))
+#+end_src
+
+- not using these for now
+
 #+begin_src emacs-lisp :tangle no
   ;; themes
   (use-package modus-themes
@@ -354,7 +433,7 @@ Nicer colors
     (load-theme 'modus-operandi-tinted :no-confirm))
 #+end_src
 
-#+begin_src emacs-lisp
+#+begin_src emacs-lisp :tangle no
   (use-package spacemacs-theme
     :init
     (load-theme 'spacemacs-light t))
@@ -404,6 +483,7 @@ Nicer colors
 #+end_src
 
 ** Yasnippet
+- seem to be having trouble getting the global-mode to switch on?
 
 #+begin_src emacs-lisp
   ;; yasnippet
@@ -432,8 +512,8 @@ Vertical completion UI for incremental minibuffer completion
     :ensure t
     :init
     (vertico-mode))
-  (use-package savehist
-    :elpaca nil
+  
+  (use-feature savehist
     :init
     (savehist-mode))
 #+end_src
@@ -534,8 +614,8 @@ additional completion commands
   (use-package corfu
     :init
     (global-corfu-mode))
-  (use-package emacs
-    :elpaca nil
+  
+  (use-feature emacs
     :init
     (setq completion-cycle-threshold 3)
     (setq tab-always-indent 'complete))
@@ -616,14 +696,134 @@ Testing this out. Not sure if I'll keep it
 ** spelling
 
 #+begin_src emacs-lisp
-  (use-package flyspell
-    :elpaca nil
+  (use-feature flyspell
     :config
     (setq flyspell-issue-message-flag nil
           ispell-program-name "aspell"
           ispell-extra-args '("--sug-mode=ultra" "--lang=en_US"))
     (add-hook 'text-mode-hook 'flyspell-mode)
     (add-hook 'prog-mode-hook 'flyspell-prog-mode))
+#+end_src
+
+** lilypond
+
+#+begin_src emacs-lisp 
+  (setq org-babel-lilypond-ly-command (expand-file-name "/opt/homebrew/bin/lilypond"))
+  (setq org-babel-lilypond-commands (list org-babel-lilypond-ly-command org-babel-lilypond-pdf-command org-babel-lilypond-midi-command))
+  (autoload 'LilyPond-mode "lilypond-mode")
+  (setq auto-mode-alist
+        (cons '("\\.ly$" . LilyPond-mode) auto-mode-alist))
+  (add-hook 'LilyPond-mode-hook (lambda () (turn-on-font-lock)))
+#+end_src
+
+** gpg
+
+#+begin_src emacs-lisp 
+(use-feature epg-config
+  :defer t
+  :init (setq epg-pinentry-mode 'loopback))
+#+end_src
+
+#+begin_src emacs-lisp 
+(use-feature epa-file
+  :defer t
+  :init (setq epa-file-cache-passphrase-for-symmetric-encryption t))
+#+end_src
+
+** ai assistant
+*** org-ai
+- https://github.com/rksm/org-ai#chatgpt-in-org-mode
+
+#+begin_src emacs-lisp
+  (use-package org-ai
+      :ensure (org-ai :host github :repo "rksm/org-ai"
+              :files ("*.el" "README.md" "snippets"))
+      :commands (org-ai-mode
+                 org-ai-global-mode)
+      :init
+      (add-hook 'org-mode-hook #'org-ai-mode) ; enable org-ai in org-mode
+      (org-ai-global-mode) ; installs global keybindings on C-c M-a
+      :config
+      ; (setq org-ai-default-chat-model "gpt-4") ; if you are on the gpt-4 beta:
+      (org-ai-install-yasnippets) ; if you are using yasnippet and want `ai` snippets
+   )
+
+#+end_src
+
+
+** programming
+*** lisp:
+#+begin_src emacs-lisp
+  (use-package lsp-mode
+    :init
+    (setq lsp-keymap-prefix "C-c l")
+    :hook ((python-mode . lsp)
+           (ansible-mode . lsp)
+           (lsp-mode . lsp-enable-which-key-integration))
+    :commands lsp)
+
+  (use-package lsp-ui :commands lsp-ui-mode)
+#+end_src
+
+*** treesit:
+#+begin_src emacs-lisp 
+(use-package treesit-auto
+  :custom
+  (treesit-auto-install 'prompt)
+  :config
+  (treesit-auto-add-to-auto-mode-alist 'all)
+  (global-treesit-auto-mode))
+#+end_src
+*** folding:
+#+begin_src emacs-lisp 
+  (use-package ts-fold
+      :ensure (ts-fold :type git :host github :repo "emacs-tree-sitter/ts-fold")
+      :config
+      (global-ts-fold-mode t))
+#+end_src
+
+*** yaml
+#+begin_src emacs-lisp 
+  (use-package yaml-mode :ensure t)
+  (use-package yaml-pro :ensure t
+    :hook (yaml-mode-hook . yaml-pro-ts-mode)
+          (yaml-ts-mode-hook . yaml-pro-ts-mode))
+#+end_src
+*** Python stuff
+#+begin_src emacs-lisp 
+  (use-package pyvenv
+    :ensure t
+    :config
+    (pyvenv-mode t)
+
+    ;; Set correct Python interpreter
+    (setq pyvenv-post-activate-hooks
+          (list (lambda ()
+                  (setq python-shell-interpreter (concat pyvenv-virtual-env "bin/python3")))))
+    (setq pyvenv-post-deactivate-hooks
+          (list (lambda ()
+                  (setq python-shell-interpreter "python3")))))
+  (use-package pyvenv-auto
+    :defer t)
+#+end_src
+
+*** k8s
+#+begin_src emacs-lisp 
+  (use-package kubernetes
+    :ensure t
+    :commands (kubernetes-overview)
+    :config
+    (setq kubernetes-poll-frequency 3600
+          kubernetes-redraw-frequency 3600))
+  (use-package kubernetes-evil
+    :ensure t
+    :after kubernetes)
+#+end_src
+
+
+#+begin_src emacs-lisp 
+  (use-package multi-vterm
+    :ensure t)
 #+end_src
 
 ** testing
@@ -633,6 +833,7 @@ Testing this out. Not sure if I'll keep it
 #+end_src
 
 
+* 
 * Still to be done
 
 ** TODO org setting
@@ -703,14 +904,27 @@ May require regular use of =M-q=
 
 
 * Testing
-#+name: testing
 #+begin_src emacs-lisp
   (custom-theme-set-faces
    'user
    '(fixed-pitch ((t ( :family "Fira Code Retina" :height .9))))
    '(variable-pitch ((t (:weight thin :inherit 'default :height 2.0)))))
-
-  (use-package mixed-pitch
-    :hook
-    (text-mode . mixed-pitch-mode))
 #+end_src
+
+
+;; #+name: testing
+;; uncomment to make work
+#+begin_src emacs-lisp
+  (use-package mixed-pitch
+      :hook
+      (text-mode . mixed-pitch-mode))
+
+  (with-eval-after-load 'cc-mode
+    (defun c-indent-then-complete ()
+      (interactive)
+      (if (= 0 (c-indent-line-or-region))
+    (completion-at-point)))
+    (dolist (map (list c-mode-map c++-mode-map))
+      (define-key map (kbd "<tab>") #'c-indent-then-complete)))
+#+end_src
+
