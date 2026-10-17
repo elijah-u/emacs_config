@@ -84,11 +84,15 @@ Everything is relative to where you launch Emacs, so you can keep multiple paral
 #+end_src
 
 ** shallow cloning
-- sometimes this doesn't seem to work
+Elpaca 0.12 removed =elpaca-git-clone-arguments=. Clone depth is now a recipe default.
+0.12's own default is =:depth treeless= (a partial clone that fetches trees lazily at
+checkout), which proved fragile against GitHub HTTP/2 stream resets during a cold
+bootstrap: a failed checkout leaves a hollow repo that Elpaca then fails to re-clone.
+Plain shallow clones fetch one pack and either succeed or leave nothing behind.
 #+begin_src emacs-lisp
-  (setq elpaca-git-clone-arguments
-        '("--depth=1" "--single-branch" "--no-tags"))
-
+  (setq elpaca-order-defaults (list :type 'git :protocol 'https :inherit t :depth 1))
+  ;; NB: do not set `elpaca-queue-limit'. In 0.12 (Oct 2026) throttling corrupted
+  ;; dependency status tracking: finished packages were reported as failed.
 #+end_src
 
 ** suggested for performance?
@@ -130,16 +134,15 @@ If you clone this somewhere else, everything just works.
 
   ;; !!!!! this file is genrated from config.org -- edit it with the understading that it will likely get overwritten !!!! 
   ;; elpaca
-  (setq elpaca-core-date '(20250405)) ;; 
-  (defvar elpaca-installer-version 0.11)
+  (defvar elpaca-installer-version 0.12)
   (defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
   (defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
-  (defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
+  (defvar elpaca-sources-directory (expand-file-name "sources/" elpaca-directory))
   (defvar elpaca-order '(elpaca :repo "https://github.com/progfolio/elpaca.git"
                                 :ref nil :depth 1 :inherit ignore
                                 :files (:defaults "elpaca-test.el" (:exclude "extensions"))
-                                :build (:not elpaca--activate-package)))
-  (let* ((repo  (expand-file-name "elpaca/" elpaca-repos-directory))
+                                :build (:not elpaca-activate)))
+  (let* ((repo  (expand-file-name "elpaca/" elpaca-sources-directory))
          (build (expand-file-name "elpaca/" elpaca-builds-directory))
          (order (cdr elpaca-order))
          (default-directory repo))
@@ -498,24 +501,20 @@ This section sets up a full modal editing environment with Vim-like keys everywh
     (("C-c w" . ace-window)))
 #+end_src
 ** Vterm
+Elpaca 0.12 replaced the =:pre-build= / =:post-build= recipe keywords with =:build=
+(the old keywords are silently ignored). vterm prompts to compile its dynamic module the
+first time =vterm.el= is loaded, and that prompt hangs Elpaca's batch byte-compiler for
+anything that requires vterm (multi-vterm). So compile the module as an explicit build
+step, inside Elpaca's build directory, right after the source files are linked there.
 #+begin_src emacs-lisp
+  (elpaca-defscript +vterm-compile-module (:type elisp :dir build)
+    "Compile vterm's dynamic module inside Elpaca's build directory."
+    (add-to-list 'load-path default-directory)
+    (setq vterm-always-compile-module t)
+    (require 'vterm))
+
   (use-package vterm
-    :ensure (vterm :post-build
-                   (progn
-                     (setq vterm-always-compile-module t)
-                     (require 'vterm)
-                     ;; Optional: log compile output for Elpaca
-                     (with-current-buffer (get-buffer-create vterm-install-buffer-name)
-                       (goto-char (point-min))
-                       (while (not (eobp))
-                         (message "%S" (buffer-substring (line-beginning-position) (line-end-position)))
-                         (forward-line)))
-                     ;; Symlink the compiled .so into Elpaca’s build tree, if needed
-                     (when-let* ((so (expand-file-name "./vterm-module.so"))
-                                 ((file-exists-p so)))
-                       (make-symbolic-link
-                        so (expand-file-name (file-name-nondirectory so) "../../builds/vterm")
-                        'ok-if-already-exists))))
+    :ensure (vterm :build (:after elpaca-build-link +vterm-compile-module))
     :commands (vterm vterm-other-window))
   (elpaca-wait)
   (use-package multi-vterm
