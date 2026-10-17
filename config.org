@@ -706,8 +706,8 @@ whenever a theme is enabled, rather than hard-coded for one theme.
 - ghost stars: leading heading stars in a faint tint (leuven-style) instead of invisible,
   so the depth is still readable behind the org-modern glyph. 18 = percent shift.
 - source blocks: a subtle background so they stand out. 4 = percent shift.
-- headings: inherit =variable-pitch= (ETBookOT), normal weight, and a fixed size ladder
-  (1.6 title, then 1.4 / 1.25 / 1.15 / 1.05, 1.0 below) under every theme; colours stay the theme's.
+- headings: inherit =variable-pitch= (ETBookOT) and normal weight under every theme;
+  sizes and colours stay the theme's (variant: main also fixes a size ladder).
 #+begin_src emacs-lisp
   (defun my/org-face-tweaks (&rest _)
     "Ghost leading stars and a subtle source-block background, for any theme.
@@ -721,34 +721,20 @@ are skipped; the `org' eval-after-load below re-runs this when they appear."
         (set-face-attribute 'org-hide nil :foreground (funcall shift bg 18)))
       (when (facep 'org-block)
         (set-face-attribute 'org-block nil :background (funcall shift bg 4)))
-      ;; Headings under every theme: variable-pitch (ETBookOT, set in early-init),
-      ;; never bold, and my own size ladder. The theme keeps the colours only.
-      ;; `variable-pitch' is appended to each face's inherit list, not substituted.
-      (dolist (spec '((org-document-title . 1.6)
-                      (org-level-1 . 1.4) (org-level-2 . 1.25) (org-level-3 . 1.15)
-                      (org-level-4 . 1.05) (org-level-5 . 1.0) (org-level-6 . 1.0)
-                      (org-level-7 . 1.0) (org-level-8 . 1.0)))
-        (let ((f (car spec)))
-          (when (facep f)
-            (let ((inh (face-attribute f :inherit)))
-              (set-face-attribute
-               f nil
-               :weight 'normal
-               :height (cdr spec)
-               :inherit (delete-dups (append (cond ((memq inh '(unspecified nil)) nil)
-                                                   ((listp inh) inh)
-                                                   (t (list inh)))
-                                             '(variable-pitch))))))))))
-  (add-hook 'enable-theme-functions #'my/org-face-tweaks)
-  (with-eval-after-load 'org
-    (my/org-face-tweaks)
-    ;; `org-mode' resets `org-hide' to the frame background on EVERY activation
-    ;; (org.el: "Try to set `org-hide' face correctly"), which would undo the ghost
-    ;; stars for each newly opened org file. Re-apply after org has had its say.
-    (add-hook 'org-mode-hook #'my/org-face-tweaks)
-    ;; Ghost-shade the #+ prefix of keywords and block delimiters with the same
-    ;; `org-hide' tint as the leading stars (org-modern can only hide or replace it).
-    (font-lock-add-keywords 'org-mode '(("^[ \t]*\\(#\\+\\)" 1 'org-hide prepend)) 'append))
+      ;; Headings under every theme: variable-pitch (ETBookOT, set in early-init) and
+      ;; never bold. Sizes and colours are left to the theme (variant branch: the
+      ;; main branch also imposes a fixed size ladder here).
+      (dolist (f '(org-document-title org-level-1 org-level-2 org-level-3 org-level-4
+                   org-level-5 org-level-6 org-level-7 org-level-8))
+        (when (facep f)
+          (let ((inh (face-attribute f :inherit)))
+            (set-face-attribute
+             f nil
+             :weight 'normal
+             :inherit (delete-dups (append (cond ((memq inh '(unspecified nil)) nil)
+                                                 ((listp inh) inh)
+                                                 (t (list inh)))
+                                           '(variable-pitch)))))))))
 #+end_src
 
 #+begin_src emacs-lisp
