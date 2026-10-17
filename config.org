@@ -1,0 +1,279 @@
+#+TITLE: Literate Emacs Configuration
+#+PROPERTY: header-args :mkdirp yes :results silent
+
+* Overview
+
+This is a portable, narrative-driven, and maintainable literate configuration for Emacs.
+It uses [[https://github.com/progfolio/elpaca][Elpaca]] as the package manager, `evil` for modal editing, and provides Python and ChatGPT integration, plus modern completions and a beautiful, usable UI.
+With a single `config.org` and a local Makefile, you can bootstrap, update, or clean your setup *anywhere*.
+
+* Early Initialization
+
+This section speeds up Emacs startup, sets the default frame size and font, and disables UI clutter. 
+Everything is relative to where you launch Emacs, so you can keep multiple parallel configs.
+
+#+begin_src emacs-lisp :tangle early-init.el
+(setq package-enable-at-startup nil
+      inhibit-default-init nil
+      native-comp-async-report-warnings-errors nil
+      gc-cons-threshold most-positive-fixnum
+      gc-cons-percentage 1
+      default-frame-alist
+      '((width . 120)
+        (height . 300)
+        (menu-bar-lines . 0)
+        (tool-bar-lines . 0)
+        (vertical-scroll-bars . nil)
+        (font . "Fira Code Retina-14")))
+#+end_src
+
+* Elpaca Package Manager Initialization
+
+Here we set up Elpaca so that all packages and builds are stored *locally* in the repo directory. 
+If you clone this somewhere else, everything just works.
+
+#+begin_src emacs-lisp :tangle lisp/elpaca-init.el
+(defvar elpaca-installer-version 0.11)
+(defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
+(defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
+(defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
+(defvar elpaca-order
+  '(elpaca :repo "https://github.com/progfolio/elpaca.git"
+           :ref nil :depth 1 :inherit ignore
+           :files (:defaults "elpaca-test.el" (:exclude "extensions"))
+           :build (:not elpaca--activate-package)))
+(let* ((repo  (expand-file-name "elpaca/" elpaca-repos-directory))
+       (build (expand-file-name "elpaca/" elpaca-builds-directory))
+       (order (cdr elpaca-order))
+       (default-directory repo))
+  (add-to-list 'load-path (if (file-exists-p build) build repo))
+  (unless (file-exists-p repo)
+    (make-directory repo t)
+    (when (<= emacs-major-version 28) (require 'subr-x))
+    (condition-case-unless-debug err
+        (if-let* ((buffer (pop-to-buffer-same-window "*elpaca-bootstrap*"))
+                  ((zerop (apply #'call-process `("git" nil ,buffer t "clone"
+                                                  ,@(when-let* ((depth (plist-get order :depth)))
+                                                      (list (format "--depth=%d" depth) "--no-single-branch"))
+                                                  ,(plist-get order :repo)
+                                                  ,repo))))
+                  ((zerop (call-process "git" nil buffer t "checkout"
+                                         (or (plist-get order :ref) "--"))))
+                  (emacs (concat invocation-directory invocation-name))
+                  ((zerop (call-process emacs nil buffer nil "-Q" "-L" "." "--batch"
+                                         "--eval" "(byte-recompile-directory \".\" 0 'force)")))
+                  ((require 'elpaca))
+                  ((elpaca-generate-autoloads "elpaca" repo)))
+            (progn (message "%s" (buffer-string)) (kill-buffer buffer))
+          (error "%s" (with-current-buffer buffer (buffer-string))))
+      ((error) (warn "%s" err) (delete-directory repo 'recursive))))
+  (unless (require 'elpaca-autoloads nil t)
+    (require 'elpaca)
+    (elpaca-generate-autoloads "elpaca" repo)
+    (let ((load-source-file-function nil))
+      (load "./elpaca-autoloads"))))
+(add-hook 'after-init-hook #'elpaca-process-queues)
+(elpaca `(,@elpaca-order))
+
+(provide 'elpaca-init)
+#+end_src
+
+* Main Emacs Configuration
+
+This block loads Elpaca and then uses `use-package` for everything else. 
+All further configuration is done in logical sections below.
+
+#+begin_src emacs-lisp :tangle init.el
+(add-to-list 'load-path (expand-file-name "lisp/" user-emacs-directory))
+(require 'elpaca-init)
+
+(elpaca use-package)
+(setq use-package-always-ensure t)
+#+end_src
+
+* Evil, Evil-Collection, Evil-Org, and Key Chord
+
+This section sets up a full modal editing environment with Vim-like keys everywhere. 
+`evil-collection` extends this to Emacs' own major modes, and `evil-org` enables modal editing in Org-mode. 
+`key-chord` allows a fast escape from insert mode with `jk` or `kj`.
+
+#+begin_src emacs-lisp :tangle init.el
+(setq evil-want-integration t
+      evil-want-keybinding nil
+      evil-want-C-i-jump nil)
+
+(use-package evil
+  :config (evil-mode 1))
+
+(use-package evil-collection
+  :after evil
+  :config
+  (setq evil-collection-key-blacklist '("SPC"))
+  (evil-collection-init))
+
+(use-package evil-org
+  :after org
+  :hook (org-mode . evil-org-mode)
+  :config (evil-org-set-key-theme '(textobjects insert navigation additional todo)))
+
+(use-package key-chord
+  :config
+  (setq key-chord-two-keys-delay 0.5)
+  (key-chord-mode 1)
+  (key-chord-define evil-insert-state-map "jk" 'evil-normal-state)
+  (key-chord-define evil-insert-state-map "kj" 'evil-normal-state))
+#+end_src
+
+* Keybinding Management: General and Which-Key
+
+We use `general.el` for clean, leader-based keybindings, with `SPC` as the leader in normal state.
+`which-key` displays helpful popups for available keys.
+
+#+begin_src emacs-lisp :tangle init.el
+(use-package general
+  :config
+  (general-create-definer leader-key
+    :states '(normal visual emacs insert)
+    :prefix "SPC"
+    :non-normal-prefix "M-SPC")
+  (leader-key
+    "/" '(consult-line :which-key "search buffer")
+    "e" '(:ignore t :which-key "edit")
+    "e i" '(lambda () (interactive) (find-file (expand-file-name "config.org" user-emacs-directory)))
+    "m" '(:ignore t :which-key "misc/org")
+    "m a" '(org-agenda :which-key "agenda")
+    "m c" '(org-capture :which-key "capture")))
+
+(use-package which-key
+  :config (which-key-mode))
+#+end_src
+
+* Modern Completion, Icons, and Minibuffer Enhancements
+
+Vertico, Marginalia, Orderless, and Consult provide a modern, fast, annotated completion UI.
+Nerd Icons add beautiful glyphs to completions (install a Nerd Font for full effect).
+Orderless enables powerful fuzzy matching.
+
+#+begin_src emacs-lisp :tangle init.el
+(use-package vertico
+  :init (vertico-mode))
+
+(use-package marginalia
+  :init (marginalia-mode))
+
+(use-package orderless
+  :custom (completion-styles '(orderless basic)))
+
+(use-package nerd-icons-completion
+  :config (nerd-icons-completion-mode))
+
+(use-package consult)
+#+end_src
+
+* Org-mode Customizations
+
+Org is the heart of this setup. The directory is set to ~/org so you can keep your notes anywhere, not just in your config repo.
+Ellipses are prettified, source blocks fontified, and Babel supports several languages.
+
+#+begin_src emacs-lisp :tangle init.el
+(use-package org
+  :elpaca nil
+  :config
+  (setq org-directory "~/org"
+        org-ellipsis "⤵"
+        org-export-allow-bind-keywords t
+        org-src-fontify-natively t)
+  (org-babel-do-load-languages
+   'org-babel-load-languages
+   '((emacs-lisp . t)
+     (python . t)
+     (shell . t)
+     (plantuml . t)
+     (lilypond . t))))
+
+(use-package org-modern
+  :hook (org-mode . global-org-modern-mode)
+  :config
+  (setq org-modern-label-border 0.3))
+#+end_src
+
+* Python Development Environment
+
+Eglot provides LSP for Python, pyvenv allows virtualenv activation, and blacken ensures auto-formatting on save.
+
+#+begin_src emacs-lisp 
+(use-package eglot
+  :hook (python-mode . eglot-ensure))
+
+(use-package pyvenv
+  :config (pyvenv-mode 1))
+
+(use-package blacken
+  :hook (python-mode . blacken-mode))
+#+end_src
+
+* ChatGPT Integration
+
+`chatgpt-shell` provides in-Emacs ChatGPT via OpenAI's API.
+Change the model as needed.
+
+#+begin_src emacs-lisp 
+(use-package chatgpt-shell
+  :custom (chatgpt-shell-model-version "gpt-4o"))
+#+end_src
+
+* Auto-Tangle and Live Reload
+
+Every time you save `config.org`, it re-tangles and reloads itself. 
+This means your Emacs stays in sync with your org file, making true literate configuration seamless.
+
+#+begin_src emacs-lisp :tangle init.el
+(defun org-babel-tangle-config ()
+  (when (string-equal (buffer-file-name)
+                      (expand-file-name "config.org" user-emacs-directory))
+    (org-babel-tangle)
+    (load-file (expand-file-name "init.el" user-emacs-directory))
+    (elpaca-process-queues)))
+
+(add-hook 'org-mode-hook
+          (lambda ()
+            (add-hook 'after-save-hook #'org-babel-tangle-config nil t)))
+
+(setq org-confirm-babel-evaluate nil)
+#+end_src
+
+* Makefile for Bootstrapping and Cleanup
+
+Run `make help` for usage.
+
+#+begin_src makefile :tangle Makefile
+EMACS ?= emacs
+CONFIG ?= config.org
+CURDIR := $(shell pwd)
+
+.PHONY: all bootstrap clean-packages clean help
+
+all: bootstrap
+
+bootstrap:
+	@echo "Tangling org configuration..."
+	$(EMACS) --batch -l org --eval '(org-babel-tangle-file "$(CONFIG)")'
+	@echo "Bootstrap complete."
+
+clean-packages:
+	rm -rf ./elpaca/builds/* ./elpaca/repos/*
+	@echo "All packages in ./elpaca/ cleared."
+
+clean: clean-packages
+	rm -f ./init.el ./early-init.el ./lisp/*.el
+	@echo "Configuration cleaned. Only config.org and Makefile remain."
+
+help:
+	@echo "Emacs Configuration Management:"
+	@echo ""
+	@echo "  make bootstrap        Tangle and set up the Emacs configuration from config.org."
+	@echo "  make clean-packages   Remove all installed packages (forces reinstallation on next bootstrap)."
+	@echo "  make clean            Remove all generated configuration files, leaving only config.org and Makefile."
+	@echo "  make help             Show this help message."
+#+end_src
+

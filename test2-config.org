@@ -1,0 +1,159 @@
+#+TITLE: Elijah's Literate Emacs Configuration
+#+PROPERTY: header-args :mkdirp yes :results silent :noweb yes
+
+Overview
+
+A fully literate org file that encapsulates Elijah's complete Emacs environment. It includes Evil-mode, extensive Org-mode customizations, enhanced minibuffer completions, icon enhancements, and custom keybindings. Dirvish is excluded, reverting to an improved vanilla Dired.
+
+* Early Initialization
+:PROPERTIES:
+:header-args: :tangle early-init.el
+:END:
+
+#+begin_src emacs-lisp
+  ;;; early-init.el --- Minimal pre-initialization
+  (setq package-enable-at-startup nil
+        inhibit-default-init nil
+        native-comp-async-report-warnings-errors nil
+        gc-cons-threshold most-positive-fixnum
+        gc-cons-percentage 1
+        default-frame-alist '((width . 120)
+                              (height . 300)
+                              (menu-bar-lines . 0)
+                              (tool-bar-lines . 0)
+                              (vertical-scroll-bars . nil))
+                              (font . "Fira Code Retina-14")))
+#+end_src
+
+* Elpaca Package Manager Initialization
+:PROPERTIES:
+:header-args: :tangle lisp/elpaca-init.el
+:END:
+
+#+begin_src emacs-lisp
+;;; elpaca-init.el
+(defvar elpaca-installer-version 0.11)
+(defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
+(defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
+(defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
+(let ((repo (expand-file-name "elpaca/" elpaca-repos-directory)))
+(unless (file-exists-p repo)
+(make-directory repo t)
+(call-process "git" nil nil nil "clone" "https://github.com/progfolio/elpaca.git" repo))
+(add-to-list 'load-path repo)
+(require 'elpaca-autoloads)
+(elpaca-process-queues))
+#+end_src
+
+* Main Configuration (init.el)
+:PROPERTIES:
+:header-args: :tangle init.el
+:END:
+
+#+begin_src emacs-lisp
+;;; init.el
+(add-to-list 'load-path (expand-file-name "lisp/" user-emacs-directory))
+(require 'elpaca-init)
+
+;; Essential packages
+(elpaca use-package)
+(setq use-package-always-ensure t)
+
+;; Evil Mode Configuration
+(setq evil-want-integration t
+evil-want-keybinding nil
+evil-want-C-i-jump nil)
+(use-package evil
+:config (evil-mode 1))
+
+(use-package evil-collection
+:after evil
+:config
+(setq evil-collection-key-blacklist '("SPC"))
+(evil-collection-init))
+
+(use-package evil-org
+:after org
+:hook (org-mode . evil-org-mode)
+:config (evil-org-set-key-theme '(textobjects insert navigation additional todo)))
+
+(use-package key-chord
+:config
+(key-chord-mode 1)
+(setq key-chord-two-keys-delay 0.5)
+(key-chord-define evil-insert-state-map "jk" 'evil-normal-state)
+(key-chord-define evil-insert-state-map "kj" 'evil-normal-state))
+
+;; General keybindings
+(use-package general
+:config
+(general-create-definer leader-key
+:states '(normal visual emacs insert)
+:prefix "SPC"
+:non-normal-prefix "M-SPC")
+
+(leader-key
+"/" '(consult-line :which-key "search buffer")
+"e" '(:ignore t :which-key "edit")
+"e i" '(lambda () (interactive) (find-file user-init-file))
+"m" '(:ignore t :which-key "misc/org")
+"m a" '(org-agenda :which-key "agenda")
+"m c" '(org-capture :which-key "capture")))
+
+;; UI and usability enhancements
+(use-package which-key
+:config (which-key-mode))
+(use-package marginalia
+:init (marginalia-mode))
+(use-package vertico
+:init (vertico-mode))
+(use-package orderless
+:custom (completion-styles '(orderless basic)))
+(use-package nerd-icons-completion
+:config (nerd-icons-completion-mode))
+(use-package consult)
+
+;; Org-mode customizations
+(use-package org
+:config
+(setq org-directory "~/org"
+org-ellipsis "⤵"
+org-export-allow-bind-keywords t
+org-src-fontify-natively t)
+(org-babel-do-load-languages
+'org-babel-load-languages
+'((emacs-lisp . t)
+(python . t)
+(shell . t)
+(plantuml . t)
+(lilypond . t))))
+
+(use-package org-bullets
+:hook (org-mode . org-bullets-mode))
+
+;; Python environment
+(use-package eglot
+:hook (python-mode . eglot-ensure))
+(use-package pyvenv
+:config (pyvenv-mode 1))
+(use-package blacken
+:hook (python-mode . blacken-mode))
+
+;; ChatGPT integration
+(use-package chatgpt-shell
+:custom (chatgpt-shell-model-version "gpt-4o"))
+
+;; Auto-tangle and reload
+(defun org-babel-tangle-config ()
+(when (string-equal (buffer-file-name)
+(expand-file-name "/.emacs.d/config.org"))
+(org-babel-tangle)
+(load-file (expand-file-name "/.emacs.d/init.el"))
+(elpaca-process-queues)))
+
+(add-hook 'org-mode-hook
+(lambda ()
+(add-hook 'after-save-hook #'org-babel-tangle-config nil t)))
+
+(setq org-confirm-babel-evaluate nil)
+#+end_src

@@ -1,0 +1,111 @@
+#+TITLE: Elijah's Literate Emacs Configuration
+#+PROPERTY: header-args :mkdirp yes :results silent :noweb yes
+
+* Overview
+
+A single literate org file driving a fully configured Emacs setup, including automatic tangling, elpaca package management, Python & ChatGPT integration, and a self-contained Makefile for easy bootstrap and cleanup.
+
+* Early Initialization
+
+#+begin_src emacs-lisp :tangle early-init.el
+;;; early-init.el --- Minimal pre-initialization
+(setq package-enable-at-startup nil
+inhibit-default-init nil
+native-comp-async-report-warnings-errors nil)
+(setq gc-cons-threshold most-positive-fixnum
+gc-cons-percentage 1)
+#+end_src
+
+* Elpaca Package Manager Initialization
+
+#+begin_src emacs-lisp :tangle lisp/elpaca-init.el :mkdirp yes
+;;; elpaca-init.el
+(defvar elpaca-installer-version 0.11)
+(defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
+(defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
+(defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
+(let ((repo (expand-file-name "elpaca/" elpaca-repos-directory)))
+(unless (file-exists-p repo)
+(make-directory repo t)
+(call-process "git" nil nil nil "clone" "https://github.com/progfolio/elpaca.git" repo))
+(add-to-list 'load-path repo)
+(require 'elpaca-autoloads)
+(elpaca-process-queues))
+#+end_src
+
+* Main Configuration (init.el)
+
+#+begin_src emacs-lisp :tangle init.el
+;;; init.el
+(add-to-list 'load-path (expand-file-name "lisp/" user-emacs-directory))
+(require 'elpaca-init)
+
+;; Essential packages
+(elpaca use-package)
+(setq use-package-always-ensure t)
+
+(use-package general)
+(use-package evil
+:config (evil-mode 1))
+
+(use-package vertico
+:init (vertico-mode))
+(use-package consult)
+(use-package marginalia
+:init (marginalia-mode))
+(use-package which-key
+:config (which-key-mode))
+
+;; Python environment
+(use-package eglot
+:hook ((python-mode . eglot-ensure)))
+(use-package pyvenv
+:config (pyvenv-mode 1))
+(use-package blacken
+:hook (python-mode . blacken-mode))
+
+;; ChatGPT integration
+(use-package chatgpt-shell
+:custom (chatgpt-shell-model-version "gpt-4o"))
+
+;; Auto-tangle and reload
+(defun org-babel-tangle-config ()
+(when (string-equal (buffer-file-name)
+(expand-file-name "/.emacs.d/config.org"))
+(org-babel-tangle)
+(load-file (expand-file-name "/.emacs.d/init.el"))
+(elpaca-process-queues)))
+
+(add-hook 'org-mode-hook
+(lambda ()
+(add-hook 'after-save-hook #'org-babel-tangle-config nil t)))
+
+(setq org-confirm-babel-evaluate nil)
+#+end_src
+
+* Makefile for Bootstrap and Cleanup
+:PROPERTIES:
+:header-args: :tangle Makefile
+:END:
+
+#+begin_src makefile
+EMACS ?= emacs
+CONFIG ?= config.org
+
+.PHONY: all bootstrap clean-packages clean
+
+all: bootstrap
+
+bootstrap:
+@echo "Tangling org configuration..."
+$(EMACS) --batch -l org --eval '(org-babel-tangle-file "$(CONFIG)")'
+@echo "Bootstrap complete."
+
+clean-packages:
+rm -rf ~/.emacs.d/elpaca/builds/* ~/.emacs.d/elpaca/repos/*
+@echo "All packages cleared."
+
+clean: clean-packages
+rm -f ~/.emacs.d/init.el ~/.emacs.d/early-init.el ~/.emacs.d/lisp/*.el
+@echo "Configuration cleaned. Only config.org and Makefile remain."
+#+end_src
