@@ -667,7 +667,7 @@ Code fullscreen) by default; =C-c C-r= toggles that, =C-c ESC= forces normal sta
     ;; Use a valid Claude model name
     :config
     ;; Configure the Anthropic backend with proper API key association
-    (setq gptel-model "claude-sonnet-4-20250514")
+    (setq gptel-model 'claude-sonnet-5-5)   ; or claude-opus-5-5 for harder work
     (setq gptel-backend 
           (gptel-make-anthropic "Claude"
                                 :stream t
@@ -699,16 +699,81 @@ Code fullscreen) by default; =C-c C-r= toggles that, =C-c ESC= forces normal sta
 *** aidermacs
 #+begin_src emacs-lisp
 (use-package aidermacs
-  :bind (("C-c a" . aidermacs-transient-menu))
-  :config
-  ; Set API_KEY in .bashrc, that will automatically picked up by aider or in elisp
-  (setenv "ANTHROPIC_API_KEY" "sk-...")
-  ; defun my-get-openrouter-api-key yourself elsewhere for security reasons
-  ;(setenv "OPENROUTER_API_KEY" (my-get-openrouter-api-key))
+  :bind (("C-c i" . aidermacs-transient-menu))   ; C-c a is gptel
+  ;; NB: never (setenv "ANTHROPIC_API_KEY" ...) here. Emacs's environment is inherited by
+  ;; every child process, and the claude CLI switches from subscription to API billing
+  ;; when that variable is set (a placeholder value just breaks it with a 401).
+  ;; aider reads the key from the login shell environment instead.
   :custom
   ; See the Configuration section below
   (aidermacs-default-chat-mode 'architect)
   (aidermacs-default-model "sonnet"))
+#+end_src
+
+*** agent-shell (Claude Code & friends as an Emacs buffer, via ACP)
+Vendor-neutral agent front end on the Agent Client Protocol: the agent runs as a
+subprocess and the conversation, tool calls, permission buttons and diffs are
+ordinary Emacs buffers (comint), no terminal emulation. Claude needs the adapter:
+=npm install -g @agentclientprotocol/claude-agent-acp= and a =claude= CLI that has
+been logged in once outside Emacs (subscription auth is the default).
+#+begin_src emacs-lisp
+  (use-package agent-shell
+    :commands (agent-shell)
+    :config
+    ;; inherit PATH etc. from Emacs so node/claude are found
+    (setq agent-shell-anthropic-claude-environment
+          (agent-shell-make-environment-variables :inherit-env t))
+    ;; evil: RET inserts a newline in insert state, sends in normal state
+    (with-eval-after-load 'evil
+      (evil-define-key 'insert agent-shell-mode-map (kbd "RET") #'newline)
+      (evil-define-key 'normal agent-shell-mode-map (kbd "RET") #'comint-send-input))
+    ;; diff review buffers start in Emacs state so y/n/p/q work directly
+    (add-hook 'diff-mode-hook
+              (lambda ()
+                (when (string-match-p "\\*agent-shell-diff\\*" (buffer-name))
+                  (evil-emacs-state)))))
+#+end_src
+
+*** claude-code-ide (the real Claude Code TUI in ghostel, with an MCP bridge to Emacs)
+The other shape: the unmodified Claude Code CLI runs in a ghostel buffer, and an MCP
+server inside Emacs gives it your current file, selection, flymake diagnostics, xref,
+imenu, tree-sitter and project info, plus (optionally) Elisp evaluation. Not on MELPA.
+Note: ghostel forwards =C-g= to the terminal, where Claude Code binds it to "edit in
+external editor"; the README suggests moving that to =alt+e= in
+=~/.claude/keybindings.json=. Try the default first and decide.
+#+begin_src emacs-lisp
+  (use-package claude-code-ide
+    :ensure (:host github :repo "manzaltu/claude-code-ide.el")
+    :bind ("C-c C-'" . claude-code-ide-menu)
+    :custom
+    (claude-code-ide-terminal-backend 'ghostel)
+    :config
+    (claude-code-ide-emacs-tools-setup))
+#+end_src
+
+*** minuet (inline ghost-text completion from Claude Haiku)
+Copilot-style completions, overlay in the buffer. Only in evil insert state. Manual with
+=M-i=, accept all =M-A=, one line =M-a=, one word =M-w=, dismiss =M-e=, cycle =M-n= /
+=M-p=. Auto-suggest is OFF here on purpose; turn on =minuet-auto-suggestion-mode= in a
+buffer to feel the latency/cost before hooking it into =prog-mode=.
+#+begin_src emacs-lisp
+  (use-package minuet
+    :bind (("M-i" . minuet-show-suggestion)
+           :map minuet-active-mode-map
+           ("M-p" . minuet-previous-suggestion)
+           ("M-n" . minuet-next-suggestion)
+           ("M-A" . minuet-accept-suggestion)
+           ("M-a" . minuet-accept-suggestion-line)
+           ("M-w" . minuet-accept-suggestion-word)
+           ("M-e" . minuet-dismiss-suggestion))
+    :config
+    (setq minuet-provider 'claude)
+    (plist-put minuet-claude-options :model "claude-haiku-5-5")
+    (plist-put minuet-claude-options :max_tokens 128)
+    (plist-put minuet-claude-options :api-key
+               (lambda () (auth-source-pick-first-password :host "api.anthropic.com")))
+    ;; Haiku 5.5 thinks by default; that is first-token latency we do not want here
+    (minuet-set-optional-options minuet-claude-options :thinking '(:type "disabled")))
 #+end_src
 
 ** some themes
