@@ -355,7 +355,7 @@ This section sets up a full modal editing environment with Vim-like keys everywh
  #+begin_src emacs-lisp 
    ;; Leader (SPC) key bindings
    (define-key leader-map (kbd "/") #'consult-line)
-   (define-key leader-map (kbd "t") #'ghostel)   ; SPC u SPC t = another terminal
+   (define-key leader-map (kbd "t") #'ghostel)   ; C-u SPC t = another terminal
 
    (define-key leader-map (kbd "e i")
      (lambda () (interactive)
