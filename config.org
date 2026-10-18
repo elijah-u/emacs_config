@@ -655,26 +655,11 @@ Code fullscreen) by default; =C-c C-r= toggles that, =C-c ESC= forces normal sta
 #+end_src
 
 ** AI interaction
+Rule of thumb (2026-10): prefer tools that ride the claude.ai subscription through the
+=claude= CLI (agent-shell, claude-code-ide). Direct-API clients (gptel, minuet) need a
+separately billed API key, so they are out for now; chatgpt-shell and aidermacs are in
+the same category and are candidates for removal.
 
-*** gptel
-#+begin_src emacs-lisp
-  (use-package gptel
-    :bind (("C-c a" . gptel)
-           ("C-c A" . gptel-menu))
-    :custom
-    ;; Set the API key retrieval function
-    (gptel-api-key (lambda () (auth-source-pick-first-password :host "api.anthropic.com")))
-    ;; Use a valid Claude model name
-    :config
-    ;; Configure the Anthropic backend with proper API key association
-    (setq gptel-model 'claude-sonnet-5-5)   ; or claude-opus-5-5 for harder work
-    (setq gptel-backend 
-          (gptel-make-anthropic "Claude"
-                                :stream t
-                                :key (lambda () (auth-source-pick-first-password :host "api.anthropic.com"))))
-    ;; Set as default backend
-    (setq gptel-default-mode 'org-mode))
-#+end_src
 
 *** chatgpt-shell
 - this package seems broken at the moment. It has a requirement that is missing ~markdown-overlays.el~
@@ -751,30 +736,6 @@ external editor"; the README suggests moving that to =alt+e= in
     (claude-code-ide-emacs-tools-setup))
 #+end_src
 
-*** minuet (inline ghost-text completion from Claude Haiku)
-Copilot-style completions, overlay in the buffer. Only in evil insert state. Manual with
-=M-i=, accept all =M-A=, one line =M-a=, one word =M-w=, dismiss =M-e=, cycle =M-n= /
-=M-p=. Auto-suggest is OFF here on purpose; turn on =minuet-auto-suggestion-mode= in a
-buffer to feel the latency/cost before hooking it into =prog-mode=.
-#+begin_src emacs-lisp
-  (use-package minuet
-    :bind (("M-i" . minuet-show-suggestion)
-           :map minuet-active-mode-map
-           ("M-p" . minuet-previous-suggestion)
-           ("M-n" . minuet-next-suggestion)
-           ("M-A" . minuet-accept-suggestion)
-           ("M-a" . minuet-accept-suggestion-line)
-           ("M-w" . minuet-accept-suggestion-word)
-           ("M-e" . minuet-dismiss-suggestion))
-    :config
-    (setq minuet-provider 'claude)
-    (plist-put minuet-claude-options :model "claude-haiku-5-5")
-    (plist-put minuet-claude-options :max_tokens 128)
-    (plist-put minuet-claude-options :api-key
-               (lambda () (auth-source-pick-first-password :host "api.anthropic.com")))
-    ;; Haiku 5.5 thinks by default; that is first-token latency we do not want here
-    (minuet-set-optional-options minuet-claude-options :thinking '(:type "disabled")))
-#+end_src
 
 ** some themes
 I switch themes often (=consult-theme=), so org cosmetics that depend on the palette are
