@@ -47,8 +47,11 @@ Everything is relative to where you launch Emacs, so you can keep multiple paral
 #+begin_src emacs-lisp
   ;; custom dirs
   (defun make-var-dir-pair (variable dir &optional path)
-    (let ((path (or path user-emacs-directory))
-          (target (expand-file-name dir path)))  
+    ;; let*, not let: TARGET must see the PATH bound on the line above. With a plain
+    ;; let it saw the original nil PATH, so .data/.config resolved against the startup
+    ;; directory (~) instead of the config directory, for years.
+    (let* ((path (or path user-emacs-directory))
+           (target (expand-file-name dir path)))
       (unless (file-directory-p target) (make-directory target))
       (set variable target)))
   (defun make-var-dir-pairs-from-list (list)
